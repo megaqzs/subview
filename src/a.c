@@ -7,12 +7,15 @@
 
 #define __USE_GNU
 #include <sys/mman.h>
-
 #include "zwlr-shell.h"
 
-struct wl_compositor *compositor;
-struct wl_shm *shm;
-struct zwlr_layer_shell_v1 *layer_shell;
+#include "config.h"
+
+#define DONOTNULL(pointer, function) if ((pointer) != NULL) (function)((pointer))
+
+struct wl_compositor *compositor = NULL;
+struct wl_shm *shm = NULL;
+struct zwlr_layer_shell_v1 *layer_shell = NULL;
 
 void registry_global_handler(void *data, struct wl_registry *registry, uint32_t name, const char *interface, uint32_t version) {
     if (strcmp(interface, "wl_compositor") == 0) {
@@ -54,19 +57,17 @@ const struct zwlr_layer_surface_v1_listener layer_shell_listener = {
     .closed = layer_surface_remove_handler
 };
 
-#define WIDTH 200
-#define HEIGHT 200
 #define MAP_SIZE WIDTH*HEIGHT*4
 int main(int argc, char *argv[]) {
 	int ret = 0;
 	int fd;
-	unsigned char *mapping;
-	struct zwlr_layer_surface_v1 *wlr_surf;
-	struct wl_surface *surface;
-	struct wl_buffer *buffer;
-	struct wl_registry *registry;
+	unsigned char *mapping = NULL;
+	struct zwlr_layer_surface_v1 *wlr_surf = NULL;
+	struct wl_surface *surface = NULL;
+	struct wl_buffer *buffer = NULL;
+	struct wl_registry *registry = NULL;
 	struct wl_display *display = wl_display_connect(NULL);
-	struct wl_shm_pool *pool;
+	struct wl_shm_pool *pool = NULL;
 
 	if (display == NULL) {
 		puts("ERROR: failed to connect to compositor");
@@ -85,6 +86,7 @@ int main(int argc, char *argv[]) {
     } else {
         printf("Some required globals unavailable\n");
 		ret = -1;
+		goto deallocate;
     }
 
 	surface = wl_compositor_create_surface(compositor);
@@ -97,6 +99,7 @@ int main(int argc, char *argv[]) {
 	zwlr_layer_surface_v1_add_listener(wlr_surf, &layer_shell_listener, NULL);
 	zwlr_layer_surface_v1_set_size(wlr_surf, WIDTH, HEIGHT);
 	zwlr_layer_surface_v1_set_anchor(wlr_surf, ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM);
+	zwlr_layer_surface_v1_set_margin(wlr_surf, MARGIN_TOP, MARGIN_RIGHT, MARGIN_BOTTOM, MARGIN_LEFT);
 	wl_surface_commit(surface);
 
 	fd = memfd_create("buffer", 0);
@@ -117,13 +120,13 @@ int main(int argc, char *argv[]) {
 	getc(stdin);
 
 	deallocate:
-	zwlr_layer_surface_v1_destroy(wlr_surf);
-	wl_surface_destroy(surface);
-	wl_buffer_destroy(buffer);
-	wl_shm_pool_destroy(pool);
-	wl_registry_destroy(registry);
+	DONOTNULL(wlr_surf, zwlr_layer_surface_v1_destroy);
+	DONOTNULL(surface, wl_surface_destroy);
+	DONOTNULL(buffer, wl_buffer_destroy);
+	DONOTNULL(pool, wl_shm_pool_destroy);
+	DONOTNULL(registry, wl_registry_destroy);
 
-	wl_display_disconnect(display);
-	munmap(mapping, MAP_SIZE);
+	DONOTNULL(display, wl_display_disconnect);
+	if (mapping != (void*)-1) munmap(mapping, MAP_SIZE);
 	return ret;
 }
