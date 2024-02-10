@@ -269,7 +269,10 @@ static struct wl_buffer *draw_frame(output_t *output)
 	if (*inp) {
 		// draw background behind text
 		cairo_set_source_rgba(cr, 0.2, 0.2, 0.2, 0.7);
-		cairo_rectangle(cr, x+extents.x_bearing-20, y+extents.y_bearing-20, extents.width+40, extents.height+40);
+		cairo_rectangle(cr, x+extents.x_bearing-OVERSCAN_X,
+				y+extents.y_bearing-OVERSCAN_Y,
+				extents.width+2*OVERSCAN_X,
+				extents.height+2*OVERSCAN_Y);
 		cairo_fill (cr);
 	}
 
