@@ -41,15 +41,12 @@ typedef union {
 } pixel;
 
 static void free_output(output_t *);
-
 static void layer_surface_configure_handler(void *, struct zwlr_layer_surface_v1 *,
                                             uint32_t, uint32_t, uint32_t);
 static void layer_surface_remove_handler(void *, struct zwlr_layer_surface_v1 *);
-
 static void global_handler(void *, struct wl_registry *, uint32_t, const char *,
                            uint32_t);
 static void global_remove_handler(void *, struct wl_registry *, uint32_t);
-
 static void output_scale(void *, struct wl_output *, int32_t);
 static void output_geometry(void *, struct wl_output *, int32_t, int32_t, int32_t,
                             int32_t, int32_t, const char *, const char *, int32_t);
@@ -84,7 +81,7 @@ static const struct wl_buffer_listener buffer_listener = {
 };
 
 pthread_mutex_t txt_buf_lock;
-pixel inp;
+char inp[40];
 static struct wl_display *display;
 static struct wl_registry *registry;
 static struct wl_compositor *compositor;
@@ -226,12 +223,15 @@ static struct wl_buffer *draw_frame(output_t *output)
 	int fd = allocate_shm_file(MAP_SIZE);
 	cairo_surface_t *cr_surf;
 	cairo_t *cr;
+	cairo_text_extents_t extents;
+	double x,y;
+
 	struct wl_shm_pool *pool;
     if (fd == -1) {
         return NULL;
     }
 
-    uint32_t *data = mmap(NULL, MAP_SIZE,
+    char *data = mmap(NULL, MAP_SIZE,
             PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
     if (data == MAP_FAILED) {
         close(fd);
@@ -256,30 +256,32 @@ static struct wl_buffer *draw_frame(output_t *output)
 
 	cr_surf = cairo_image_surface_create_for_data(data, CAIRO_FORMAT_ARGB32, WIDTH, HEIGHT, WIDTH*4);
 	cr = cairo_create(cr_surf);
-	cairo_set_source_rgb (cr, 0, 0, 0);
-	cairo_move_to(cr, 0, 0);
-	cairo_line_to(cr, 500, 500);
-	cairo_move_to(cr, 500, 0);
-	cairo_line_to(cr, 0, 500);
-	cairo_set_line_width(cr, 100);
-	cairo_stroke(cr);
-	
-	cairo_rectangle(cr, 0, 0, 250, 250);
-	cairo_set_source_rgba(cr, inp.v.r/255.0f, inp.v.g/255.0f, inp.v.b/255.0f, inp.v.a/255.0f
-);
-	cairo_fill(cr);
-	
-	cairo_rectangle(cr, 0, 250, 250, 250);
-	cairo_set_source_rgba(cr, 0, 1, 0, 0.60);
-	cairo_fill(cr);
-	
-	cairo_rectangle(cr, 250, 0, 250, 250);
-	cairo_set_source_rgba(cr, 0, 0, 1, 0.40);
-	cairo_fill(cr);
+
+	// initialize font
+	cairo_select_font_face(cr, FONT, FONT_SLANT, FONT_WEIGHT);
+	cairo_set_font_size(cr, FONT_SIZE);
+
+	// get text positioning information
+	cairo_text_extents(cr, inp, &extents);
+	x = WIDTH/2-(extents.width/2 + extents.x_bearing);
+	y = HEIGHT/2-(extents.height/2 + extents.y_bearing);
+
+	if (*inp) {
+		// draw background behind text
+		cairo_set_source_rgba(cr, 0.2, 0.2, 0.2, 0.7);
+		cairo_rectangle(cr, x+extents.x_bearing-20, y+extents.y_bearing-20, extents.width+40, extents.height+40);
+		cairo_fill (cr);
+	}
+
+	// draw text
+	cairo_move_to(cr, x, y);
+	cairo_set_source_rgba(cr, 1, 1, 1, 1);
+	cairo_show_text(cr, inp);
+
 	cairo_destroy(cr);
+	cairo_surface_destroy(cr_surf);
 
     munmap(data, MAP_SIZE);
-	cairo_surface_destroy(cr_surf);
     wl_buffer_add_listener(buffer, &buffer_listener, NULL);
     return buffer;
 }
@@ -310,7 +312,6 @@ void update_output(void) {
 	pthread_mutex_lock(&txt_buf_lock);
 	output_t *output;
 	wl_list_for_each(output, &outputs, link) {
-		printf("%d\n", output->new_data);
 		output->new_data = true;
 	}
 	pthread_mutex_unlock(&txt_buf_lock);
