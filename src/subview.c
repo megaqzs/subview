@@ -13,9 +13,9 @@
 int main(int argc, char *argv[]) {
 	char *line;
 	size_t len = 0;
-	pthread_t inf;
-	if (!pthread_create(&inf, NULL, start_wayland_backend, NULL)) {
+	if (!start_wayland_backend()) {
 		while (getline(&line, &len, stdin) > 0) {
+			puts("test");
 			int ilen = strlen(line);
 			if (line[ilen-1] == '\n' || line[ilen-1] == '\r') {
 				line[--ilen] = '\0';
