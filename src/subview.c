@@ -11,14 +11,13 @@
 #define MAP_SIZE WIDTH*HEIGHT*4
 
 int main(int argc, char *argv[]) {
-    char *line;
-    size_t len = 0;
+    char *line = NULL;
+    size_t len = 0, ilen;
     if (!start_wayland_backend()) {
-        while (getline(&line, &len, stdin) > 0) {
-            int ilen = strlen(line);
-            if (line[ilen-1] == '\n' || line[ilen-1] == '\r') {
+        while ((ilen = getline(&line, &len, stdin)) > 0) {
+            if (ilen > 1 && line[ilen-1] == '\n') {
                 line[--ilen] = '\0';
-                if (line[ilen-1] == '\n' || line[ilen-1] == '\r')
+                if (ilen > 1 && line[ilen-1] == '\r')
                     line[--ilen] = '\0';
             }
             if (!ilen)
