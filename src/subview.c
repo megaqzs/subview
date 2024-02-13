@@ -15,13 +15,14 @@ int main(int argc, char *argv[]) {
 	size_t len = 0;
 	if (!start_wayland_backend()) {
 		while (getline(&line, &len, stdin) > 0) {
-			puts("test");
 			int ilen = strlen(line);
 			if (line[ilen-1] == '\n' || line[ilen-1] == '\r') {
 				line[--ilen] = '\0';
 				if (line[ilen-1] == '\n' || line[ilen-1] == '\r')
 					line[--ilen] = '\0';
 			}
+			if (!ilen)
+				break;
 
 			pthread_mutex_lock(&txt_buf_lock);
 			free(inp);
@@ -31,8 +32,11 @@ int main(int argc, char *argv[]) {
 			pthread_mutex_unlock(&txt_buf_lock);
 		}
 		free(line);
-		free(inp);
 		stop_wayland_backend();
+		pthread_mutex_lock(&txt_buf_lock);
+		free(inp);
+		inp = NULL;
+		pthread_mutex_unlock(&txt_buf_lock);
 	}
 		
 }
