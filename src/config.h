@@ -10,8 +10,8 @@ options_t default_options = {
     .anchor = ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM,
     .fg = {
         .r = 1,
-        .g = 0,
-        .b = 0,
+        .g = 1,
+        .b = 1,
         .a = 1
     },
     .bg = {
@@ -23,7 +23,6 @@ options_t default_options = {
     .width = 1500,
     .height = 500,
     .font_desc = "Sans 52",
-    .border_strength = 100,
     .align_center = false,
 
     .margin_top = 0,
