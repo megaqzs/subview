@@ -1,5 +1,6 @@
 #include <pango/pangocairo.h>
 #include "options.h"
+#include "utils.h"
 
 #define FORMAT CAIRO_FORMAT_ARGB32
 

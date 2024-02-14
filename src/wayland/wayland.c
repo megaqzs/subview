@@ -12,6 +12,7 @@
 #include "zwlr-shell.h"
 #include "options.h"
 #include "pangocairo/renderer.h"
+#include "utils.h"
 
 
 
@@ -110,8 +111,10 @@ static void layer_surface_configure_handler(
   uint32_t height) {
     output_t *output = data;
 
+    PDEBUG("configure event triggered");
     if (!(width == 0 || width == output->options.width) || !(height == 0 || height == output->options.height))
-        fputs("ERROR: width or height are incorrect\n", stderr); // TODO: handle
+        PWARN("width or height are incorrect, expected %ux%u, but got %ux%u, ignoring",
+                output->options.width, output->options.height, width, height); // TODO: handle
 
     zwlr_layer_surface_v1_ack_configure(surface, serial);
 
@@ -343,7 +346,7 @@ int start_wayland_backend(options_t *options) {
     display = wl_display_connect(NULL);
 
     if (display == NULL) {
-        puts("ERROR: failed to connect to compositor");
+        PERROR("failed to connect to compositor");
         free_backend();
         return -3;
     }
@@ -354,7 +357,7 @@ int start_wayland_backend(options_t *options) {
 
     // all our objects should be ready!
     if (!compositor || !shm || !layer_shell) {
-        printf("ERROR: some wayland globals weren't found [%p, %p, %p]\n", compositor, shm, layer_shell);
+        PERROR("some wayland globals weren't found [%p, %p, %p]", compositor, shm, layer_shell);
         free_backend();
         return -2;
     }

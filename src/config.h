@@ -3,9 +3,10 @@
 #define PROGNAME "subview"
 #define VERSION "0.1-devel"
 
+#define LOG_LEVEL WARN
+
 // the default options used by the program
 options_t default_options = {
-    .level = WARN,
     .style = BLOCK,
     .anchor = ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM,
     .fg = {
