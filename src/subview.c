@@ -10,7 +10,8 @@
 
 int main(int argc, char *argv[]) {
     char *line = NULL;
-    ssize_t len = 0, ilen;
+    ssize_t ilen;
+    size_t len = 0;
     options_t *options = malloc(sizeof(*options));
     if (!parse_args(argc, argv, options) && !start_wayland_backend(options)) {
         while ((ilen = getline(&line, &len, stdin)) > 0) {
