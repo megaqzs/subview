@@ -5,19 +5,18 @@
 #include <string.h>
 #include <stdbool.h>
 
-#include "config.h"
 #include "wayland/wayland.h"
-
-#define MAP_SIZE WIDTH*HEIGHT*4
+#include "options.h"
 
 int main(int argc, char *argv[]) {
     char *line = NULL;
-    size_t len = 0, ilen;
-    if (!start_wayland_backend()) {
+    ssize_t len = 0, ilen;
+    options_t *options = malloc(sizeof(*options));
+    if (!parse_args(argc, argv, options) && !start_wayland_backend(options)) {
         while ((ilen = getline(&line, &len, stdin)) > 0) {
-            if (ilen > 1 && line[ilen-1] == '\n') {
+            if (ilen > 0 && line[ilen-1] == '\n') {
                 line[--ilen] = '\0';
-                if (ilen > 1 && line[ilen-1] == '\r')
+                if (ilen > 0 && line[ilen-1] == '\r')
                     line[--ilen] = '\0';
             }
             if (!ilen)
@@ -30,11 +29,8 @@ int main(int argc, char *argv[]) {
             update_output();
             pthread_mutex_unlock(&txt_buf_lock);
         }
-        free(line);
         stop_wayland_backend();
-        pthread_mutex_lock(&txt_buf_lock);
+        free(line);
         free(inp);
-        inp = NULL;
-        pthread_mutex_unlock(&txt_buf_lock);
     }
 }
