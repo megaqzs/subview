@@ -49,6 +49,7 @@ void draw_text(char *text, char *buf, uint32_t stride, options_t *options) {
     cairo_t *cr;
     PangoLayout *layout;
     PangoFontDescription *desc;
+    PangoRectangle extents;
     double x,y;
 
     cr_surf = cairo_image_surface_create_for_data(buf, FORMAT, options->width, options->height, stride);
@@ -65,7 +66,6 @@ void draw_text(char *text, char *buf, uint32_t stride, options_t *options) {
     pango_layout_set_width(layout, pango_units_from_double(options->width));
 
     // draw text
-    PangoRectangle extents;
     pango_layout_get_extents(layout, NULL, &extents);
     x = options->width/2 - pango_units_to_double(extents.width/2);
     y = options->height - pango_units_to_double(extents.height);
