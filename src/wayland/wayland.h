@@ -1,7 +1,9 @@
 #ifndef WAYLAND_WAYLAND_H
 #include <wayland-client.h>
+#include <pthread.h>
 
 //extern struct wl_buffer *buffer;
+extern pthread_mutex_t txt_buf_lock;
 extern uint32_t inp;
 void *start_wayland_backend(void *);
 void update_output(void);

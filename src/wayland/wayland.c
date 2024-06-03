@@ -2,6 +2,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <pthread.h>
+#include <cairo/cairo.h>
 
 #define __USE_GNU
 #include <sys/mman.h>
@@ -27,6 +29,16 @@ typedef struct {
 	_Atomic bool new_data;
 	struct wl_list link;
 } output_t;
+
+typedef union {
+	uint32_t r;
+	struct {
+		unsigned r:8;
+		unsigned g:8;
+		unsigned b:8;
+		unsigned a:8;
+	} v;
+} pixel;
 
 static void free_output(output_t *);
 
@@ -54,34 +66,31 @@ static const struct zwlr_layer_surface_v1_listener layer_shell_listener = {
 	.configure = layer_surface_configure_handler,
 	.closed = layer_surface_remove_handler
 };
-
 static const struct wl_output_listener output_listener = {
 	.geometry = output_geometry,
 	.mode = output_mode,
 	.done = output_done,
 	.scale = output_scale,
 };
-
 static const struct wl_registry_listener registry_listener = {
 	.global = global_handler,
 	.global_remove = global_remove_handler
 };
-
 static const struct wl_callback_listener frame_listener = {
 	.done = frame_done
 };
-
 static const struct wl_buffer_listener buffer_listener = {
 	.release = buffer_release
 };
 
-struct wl_list outputs;
-uint32_t inp;
+pthread_mutex_t txt_buf_lock;
+pixel inp;
 static struct wl_display *display;
 static struct wl_registry *registry;
 static struct wl_compositor *compositor;
 static struct wl_shm *shm;
 static struct zwlr_layer_shell_v1 *layer_shell;
+static struct wl_list outputs;
 static struct wl_buffer *buffer;
 
 
@@ -214,7 +223,9 @@ static int allocate_shm_file(size_t size) {
 
 static struct wl_buffer *draw_frame(output_t *output)
 {
-    int fd = allocate_shm_file(MAP_SIZE);
+	int fd = allocate_shm_file(MAP_SIZE);
+	cairo_surface_t *cr_surf;
+	cairo_t *cr;
 	struct wl_shm_pool *pool;
     if (fd == -1) {
         return NULL;
@@ -233,17 +244,42 @@ static struct wl_buffer *draw_frame(output_t *output)
     wl_shm_pool_destroy(pool);
     close(fd);
 
-    /* Draw checkerboxed background */
-    for (int y = 0; y < HEIGHT; ++y) {
-        for (int x = 0; x < WIDTH; ++x) {
-            if ((x + y / 10 * 10) % 20 < 10)
-                data[y * WIDTH + x] = 0xFF666666;
-            else
-                data[y * WIDTH + x] = inp;
-        }
-    }
+    /* Draw checkerboxed background, usefull for debugging and setting config.h */
+    //for (int y = 0; y < HEIGHT; ++y) {
+    //    for (int x = 0; x < WIDTH; ++x) {
+    //        if ((x + y / 10 * 10) % 20 < 10)
+    //            data[y * WIDTH + x] = 0xFF666666;
+    //        else
+    //            data[y * WIDTH + x] = inp;
+    //    }
+    //}
+
+	cr_surf = cairo_image_surface_create_for_data(data, CAIRO_FORMAT_ARGB32, WIDTH, HEIGHT, WIDTH*4);
+	cr = cairo_create(cr_surf);
+	cairo_set_source_rgb (cr, 0, 0, 0);
+	cairo_move_to(cr, 0, 0);
+	cairo_line_to(cr, 500, 500);
+	cairo_move_to(cr, 500, 0);
+	cairo_line_to(cr, 0, 500);
+	cairo_set_line_width(cr, 100);
+	cairo_stroke(cr);
+	
+	cairo_rectangle(cr, 0, 0, 250, 250);
+	cairo_set_source_rgba(cr, inp.v.r/255.0f, inp.v.g/255.0f, inp.v.b/255.0f, inp.v.a/255.0f
+);
+	cairo_fill(cr);
+	
+	cairo_rectangle(cr, 0, 250, 250, 250);
+	cairo_set_source_rgba(cr, 0, 1, 0, 0.60);
+	cairo_fill(cr);
+	
+	cairo_rectangle(cr, 250, 0, 250, 250);
+	cairo_set_source_rgba(cr, 0, 0, 1, 0.40);
+	cairo_fill(cr);
+	cairo_destroy(cr);
 
     munmap(data, MAP_SIZE);
+	cairo_surface_destroy(cr_surf);
     wl_buffer_add_listener(buffer, &buffer_listener, NULL);
     return buffer;
 }
@@ -271,32 +307,45 @@ static void frame_done(void *data, struct wl_callback *cb, uint32_t time) {
 }
 
 void update_output(void) {
+	pthread_mutex_lock(&txt_buf_lock);
 	output_t *output;
 	wl_list_for_each(output, &outputs, link) {
 		printf("%d\n", output->new_data);
 		output->new_data = true;
 	}
+	pthread_mutex_unlock(&txt_buf_lock);
 }
 
 void stop_wayland_backend(void) {
 	output_t *output, *tmp;
 	wl_list_for_each_safe(output, tmp, &outputs, link)
 		free_output(output);
-	if (shm)
+	if (shm) {
 		wl_shm_destroy(shm);
-	if (compositor)
+		shm = NULL;
+	}
+	if (compositor) {
 		wl_compositor_destroy(compositor);
-	if (layer_shell)
+		compositor = NULL;
+	}
+	if (layer_shell) {
 		zwlr_layer_shell_v1_destroy(layer_shell);
-	if (registry)
+		layer_shell = NULL;
+	} if (registry) {
 		wl_registry_destroy(registry);
-	if (display)
+		registry = NULL;
+	}
+	if (display) {
 		wl_display_disconnect(display);
+		display = NULL;
+	}
+	pthread_mutex_destroy(&txt_buf_lock);
 }
 
 void *start_wayland_backend(void *arg) {
-	int fd, ret = 0;
-	struct wl_shm_pool *pool;
+	int ret = 0;
+
+	pthread_mutex_init(&txt_buf_lock, NULL);
 	display = wl_display_connect(NULL);
 
 	wl_list_init(&outputs);
@@ -323,5 +372,6 @@ void *start_wayland_backend(void *arg) {
 	puts("ERROR: failed to dispatch events");
 
 deallocate:
+	stop_wayland_backend();
 	return NULL;
 }
