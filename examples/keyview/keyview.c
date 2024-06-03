@@ -277,7 +277,11 @@ int main(void) {
 	}
 
 	printf("exiting\n");
-    write(sock, "\0", 1);
+    list_node_t *node, *tmp;
+    forward_list_loop_safe(keylist, node, tmp) {
+        free(CONTAINER_OF(node)); // free the key list on exit
+    }
+    write(sock, "", 1); // clear the subview buffer so that the text won't stay forever
     close(sock);
     libinput_unref(li);
 

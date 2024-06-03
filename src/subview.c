@@ -57,7 +57,7 @@ int main(int argc, char *argv[]) {
     options_t *options = malloc(sizeof(*options));
     if (!parse_args(argc, argv, options)) {
         sock = socket(AF_UNIX, SOCK_STREAM, 0);
-        if (gen_sock_addr(&addr, sizeof(addr->sun_path)) || bind(sock, (struct sockaddr*) &addr, sizeof(addr))) {
+        if (gen_sock_addr(&addr, sizeof(addr.sun_path)) || bind(sock, (struct sockaddr*) &addr, sizeof(addr))) {
             if (errno == ENAMETOOLONG)
                 PERROR("Failed to create control socket since path was too long, exiting due to unexpected behavior", strerror(errno));
             else
