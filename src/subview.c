@@ -93,8 +93,7 @@ end:
     PDEBUG("exiting safely");
     if (sock >= 0) {
         close(sock);
-        if (!options->force)
-            unlink(addr.sun_path);
+        unlink(addr.sun_path);
     }
     free(options);
     for (int i = 0; i < MAX_LOG_FILES; i++) {
