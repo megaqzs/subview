@@ -1,3 +1,5 @@
+#include "options.h"
+
 #define _STRINGIFY2(x) #x
 #define STRINGIFY(x) _STRINGIFY2(x)
 

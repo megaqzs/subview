@@ -2,7 +2,15 @@
 #include "options.h"
 
 #ifndef PANGOCAIRO_RENDERER_H
-    uint32_t get_surf_stride(options_t *);
-    void draw_text(const char *, char *, uint32_t, options_t *);
 #   define PANGOCAIRO_RENDERER_H
+    struct draw_args {
+        const char *text;
+        char *buffer;
+        uint32_t stride;
+        options_t *options;
+    };
+
+    uint32_t get_surf_stride(options_t *);
+    // const char *, char *, uint32_t, options_t *
+    void *draw_text(void *);
 #endif

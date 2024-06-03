@@ -1,10 +1,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdbool.h>
-#include <pthread.h>
-#include <unistd.h>
 #include <string.h>
-#include <stdbool.h>
 #include <unistd.h>
 #include <errno.h>
 #include <sys/socket.h>
@@ -27,11 +24,7 @@ void exit_hndlr(int signum) {
         close(sock);
         unlink(addr.sun_path);
     }
-    if (signum >= 0) {
-        // let the operating system handle resource destruction
-        // to avoid unnecessary design requirments which could cause problems
-        _exit(0);
-    }
+    closed = true;
 }
 
 int gen_sock_addr(struct sockaddr_un *addr, size_t pathlen) {
@@ -81,40 +74,11 @@ int main(int argc, char *argv[]) {
             daemon(1, 1); // daemonise after socket creation if requested
 
         listen(sock, 0); // no need for backlog since it is a single client program
-        if (!start_wayland_backend(options)) {
-            // client connection loop
-            while (running) {
-                FILE *conn = fdopen(accept(sock, NULL, NULL), "r+b");
-                PINFO("connection aquired for control socket");
-
-                while (running && (ilen = getdelim(&line, &len, '\0', conn)) > 0) {
-                    PDEBUG("line length is %ld", ilen);
-                    if (*line == '\x04') {
-                        PINFO("got end of transmission character, aborting");
-                        running = false;
-                        break;
-                    }
-                    pthread_mutex_lock(&txt_buf_lock);
-                    free(inp);
-                    if (*line == '\0') {
-                        inp = NULL;
-                    } else {
-                        inp = malloc(ilen+1);
-                        memcpy(inp, line, ilen+1);
-                    }
-                    update_output();
-                    pthread_mutex_unlock(&txt_buf_lock);
-                }
-                fclose(conn); // close socket since the connection is finished
-            }
-        }
+        start_wayland_backend(options, sock);
     }
 end:
     PDEBUG("exiting safely");
-    stop_wayland_backend();
-    free(line);
     free(options);
-    free(inp);
     for (int i = 0; i < MAX_LOG_FILES; i++) {
         fclose(log_files[i]);
         log_files[i] = NULL;

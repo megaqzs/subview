@@ -1,8 +1,9 @@
+#ifndef OPTIONS_H
+#include <stdio.h>
 #include <stdint.h>
 #include <stdbool.h>
 #include "zwlr-shell.h"
 
-#ifndef OPTIONS_H
 #   define MAX_LOG_FILES 1
 enum text_style {
     PLAIN, // only displays the text without any background
@@ -42,6 +43,10 @@ typedef struct {
     char *font_desc;
     bool align_center; 
     
+    // for areas
+    int32_t x;
+    int32_t y;
+
     // only applies for paragraph_block and line_block styles
     int32_t overscan_x;
     int32_t overscan_y;
