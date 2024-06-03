@@ -6,7 +6,6 @@
 #include "utils.h"
 #include "config.h"
 
-enum verbosity log_level = LOG_LEVEL;
 FILE *log_files[MAX_LOG_FILES];
 
 void _logger(enum verbosity lvl, char *format, ...) {
@@ -40,7 +39,6 @@ void print_help(char *name) {
 
 int parse_args(int argc, char *argv[], options_t *options) {
     log_files[0] = stderr;
-    enum verbosity curr_level;
     int parsing = 1;
     memcpy(options, &default_options, sizeof(*options));
     while (parsing) {
@@ -60,16 +58,16 @@ int parse_args(int argc, char *argv[], options_t *options) {
                 break;
             case 'v':
                 char *endptr;
-                curr_level = strtol(optarg, &endptr, 10);
+                log_level = strtol(optarg, &endptr, 10);
                 if (!*endptr)
                     break; // no need to continue checking since we found the log level
-                if (!strcmp(optarg, "DEBUG"))
+                if (!strcasecmp(optarg, "DEBUG"))
                     log_level = DEBUG;
-                else if (!strcmp(optarg, "INFO"))
+                else if (!strcasecmp(optarg, "INFO"))
                     log_level = INFO;
-                else if (!strcmp(optarg, "WARN"))
+                else if (!strcasecmp(optarg, "WARN"))
                     log_level = WARN;
-                else if (!strcmp(optarg, "ERROR"))
+                else if (!strcasecmp(optarg, "ERROR"))
                     log_level = ERROR;
                 else {
                     print_help(argc ? argv[0] : PROGNAME);
@@ -81,6 +79,5 @@ int parse_args(int argc, char *argv[], options_t *options) {
                 break;
         }
     }
-    log_level = curr_level;
     return 0;
 }

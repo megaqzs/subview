@@ -3,7 +3,7 @@
 #define PROGNAME "subview"
 #define VERSION "0.1-devel"
 
-#define LOG_LEVEL WARN
+enum verbosity log_level = 1;
 
 // the default options used by the program
 options_t default_options = {
