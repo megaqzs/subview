@@ -4,7 +4,7 @@ mkdir -p build
 cp -n config.h build/config.h
 set -e
 
-PKGS="wayland-client cairo"
+PKGS="wayland-client pangocairo"
 LDFLAGS="$LDFLAGS $(pkg-config --libs $PKGS)"
 CFLAGS="$CFLAGS $(pkg-config --cflags $PKGS)"
 

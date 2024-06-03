@@ -3,7 +3,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <pthread.h>
-#include <cairo/cairo.h>
+#include <pango/pangocairo.h>
 
 #define __USE_GNU
 #include <sys/mman.h>
@@ -15,6 +15,7 @@
 #include "config.h"
 
 #define MAP_SIZE WIDTH*HEIGHT*4
+
 
 void *start_wayland_backend(void *);
 void stop_wayland_backend(void);
@@ -213,7 +214,9 @@ static struct wl_buffer *draw_frame(output_t *output)
 	int fd = allocate_shm_file(MAP_SIZE);
 	cairo_surface_t *cr_surf;
 	cairo_t *cr;
-	cairo_text_extents_t extents;
+	PangoLayout *layout;
+	PangoFontDescription *desc;
+	PangoRectangle extents;
 	double x,y;
 
 	struct wl_shm_pool *pool;
@@ -244,34 +247,43 @@ static struct wl_buffer *draw_frame(output_t *output)
     //    }
     //}
 
-	if (inp && *inp) {
+	if (output->new_data) {
 		cr_surf = cairo_image_surface_create_for_data(data, CAIRO_FORMAT_ARGB32, WIDTH, HEIGHT, WIDTH*4);
 		cr = cairo_create(cr_surf);
+		cairo_surface_destroy(cr_surf);
 
-		// initialize font
-		cairo_select_font_face(cr, FONT, FONT_SLANT, FONT_WEIGHT);
-		cairo_set_font_size(cr, FONT_SIZE);
+		// initialize layout
+		desc = pango_font_description_from_string(FONT_DESC);
+		layout = pango_cairo_create_layout(cr);
+		pango_layout_set_font_description(layout, desc);
+
+		// write the input to the layout without the input changing
+		pthread_mutex_lock(&txt_buf_lock);
+		pango_layout_set_text(layout, inp, -1);
+		pthread_mutex_unlock(&txt_buf_lock);
+		pango_layout_set_width(layout, pango_units_from_double(WIDTH));
+
 
 		// get text positioning information
-		cairo_text_extents(cr, inp, &extents);
-		x = WIDTH/2-(extents.width/2 + extents.x_bearing);
-		y = HEIGHT-extents.y_bearing-extents.height-OVERSCAN_Y;
+		pango_layout_get_extents(layout, NULL, &extents);
+		x = WIDTH/2 - pango_units_to_double(extents.width/2);
+		y = HEIGHT - pango_units_to_double(extents.height);
 
 		// draw background behind text
 		cairo_set_source_rgba(cr, 0.2, 0.2, 0.2, 0.7);
-		cairo_rectangle(cr, x+extents.x_bearing-OVERSCAN_X,
-				y+extents.y_bearing-OVERSCAN_Y,
-				extents.width+2*OVERSCAN_X,
-				extents.height+2*OVERSCAN_Y);
-		cairo_fill (cr);
+		cairo_rectangle(cr,
+				x-OVERSCAN_X,
+				y-OVERSCAN_Y,
+				pango_units_to_double(extents.width)+2*OVERSCAN_X,
+				pango_units_to_double(extents.height)+2*OVERSCAN_Y);
+		cairo_fill(cr);
 
 		// draw text
-		cairo_move_to(cr, x, y);
+		cairo_move_to(cr, x-pango_units_to_double(extents.x), y-pango_units_to_double(extents.y));
 		cairo_set_source_rgba(cr, 1, 1, 1, 1);
-		cairo_show_text(cr, inp);
+		pango_cairo_show_layout(cr, layout);
 
 		cairo_destroy(cr);
-		cairo_surface_destroy(cr_surf);
 	}
 
     munmap(data, MAP_SIZE);
@@ -302,12 +314,10 @@ static void frame_done(void *data, struct wl_callback *cb, uint32_t time) {
 }
 
 void update_output(void) {
-	pthread_mutex_lock(&txt_buf_lock);
 	output_t *output;
 	wl_list_for_each(output, &outputs, link) {
 		output->new_data = true;
 	}
-	pthread_mutex_unlock(&txt_buf_lock);
 }
 
 void stop_wayland_backend(void) {
@@ -338,7 +348,6 @@ void stop_wayland_backend(void) {
 
 void *start_wayland_backend(void *arg) {
 	int ret = 0;
-
 	pthread_mutex_init(&txt_buf_lock, NULL);
 	display = wl_display_connect(NULL);
 
