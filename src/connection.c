@@ -43,12 +43,13 @@ connection_t *new_connection(struct pollfd *pfd, int fd) {
 void reftick_connection(connection_t *connection) {
     connection->refcount++;
 }
+
 void refdrop_connection(connection_t *conn) {
     if (!(--conn->refcount)) {
         PINFO("destroying connection for fd %d", conn->pfd->fd);
         close(conn->pfd->fd);
         conn->pfd->fd = -conn->pfd->fd;
-        list_del(&connection_list);
+        list_del(&conn->link);
         free(conn->vis_buff);
         free(conn->inp_buff);
         free(conn);
