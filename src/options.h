@@ -3,6 +3,7 @@
 #include "zwlr-shell.h"
 
 #ifndef OPTIONS_H
+#   define MAX_LOG_FILES 1
 enum text_style {
     PLAIN, // only displays the text without any background
     BLOCK, // displays the text in front of a box for the entire input
@@ -11,10 +12,10 @@ enum text_style {
 };
 
 enum verbosity {
-    DEBUG,
-    INFO,
+    ERROR,
     WARN,
-    ERROR
+    INFO,
+    DEBUG,
 };
 
 struct color {
@@ -25,6 +26,9 @@ struct color {
 };
 
 typedef struct {
+    bool print_path; // print the control socket path
+    bool daemonise; // daemonise the program after socket creation
+
     enum text_style style;
     enum zwlr_layer_surface_v1_anchor anchor;
     struct color bg;
@@ -44,7 +48,10 @@ typedef struct {
 } options_t;
 
 int parse_args(int argc, char *argv[], options_t *);
+void _logger(enum verbosity lvl, char *format, ...);
 void get_help(char *);
 extern enum verbosity log_level;
+extern FILE *log_files[MAX_LOG_FILES];
+extern size_t log_files_length;
 #   define OPTIONS_H
 #endif

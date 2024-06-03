@@ -32,4 +32,8 @@ options_t default_options = {
     .margin_left = 0,
     .overscan_x = 10,
     .overscan_y = 0,
+
+
+    .print_path = false,
+    .daemonise = false,
 };
