@@ -27,7 +27,9 @@ struct color {
 };
 
 typedef struct {
+    char *path; // the path of the control socket
     bool print_path; // print the control socket path
+    bool force; // forcefully open the control socket
     bool daemonise; // daemonise the program after socket creation
 
     enum text_style style;

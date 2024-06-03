@@ -35,6 +35,8 @@ options_t default_options = {
     .overscan_y = 0,
 
 
+    .path = NULL,
     .print_path = false,
     .daemonise = false,
+    .force = false
 };

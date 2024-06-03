@@ -22,12 +22,25 @@ void exit_hndlr(int signum) {
     closed = true;
 }
 
-int gen_sock_addr(struct sockaddr_un *addr, size_t pathlen) {
+int gen_sock_addr(struct sockaddr_un *addr, size_t pathlen, options_t *options) {
     addr->sun_family = AF_UNIX;
-    if (pathlen < snprintf(addr->sun_path, pathlen, "/var/run/user/%d/subview", geteuid())) {
-        errno = ENAMETOOLONG; // we failed to create the path with snprintf
-        return -1;
+    size_t path_size = 0;
+    if (options->path) {
+        path_size = strlen(options->path);
+        if (pathlen < path_size) {
+            errno = ENAMETOOLONG;
+            return -1;
+        }
+        memcpy(addr->sun_path, options->path, path_size);
+    } else {
+        path_size = snprintf(addr->sun_path, pathlen, "/var/run/user/%d/subview", geteuid());;
+        if (pathlen < path_size) {
+            errno = ENAMETOOLONG;
+            return -1;
+        }
     }
+    if (options->force)
+        unlink(addr->sun_path);
     return 0;
 }
 
@@ -44,11 +57,18 @@ int main(int argc, char *argv[]) {
     options_t *options = malloc(sizeof(*options));
     if (!parse_args(argc, argv, options)) {
         sock = socket(AF_UNIX, SOCK_STREAM, 0);
-        if (gen_sock_addr(&addr, sizeof(addr.sun_path)) || bind(sock, (struct sockaddr*) &addr, sizeof(addr))) {
-            if (errno == ENAMETOOLONG)
-                PERROR("Failed to create control socket since path was too long");
-            else
-                PERROR("Failed to create control socket at '%s' with error `%s`", addr.sun_path, strerror(errno));
+        if (gen_sock_addr(&addr, sizeof(addr.sun_path), options) || bind(sock, (struct sockaddr*) &addr, sizeof(addr))) {
+            switch (errno) {
+                case ENAMETOOLONG:
+                    PERROR("Failed to create control socket because it's file name is too long");
+                    break;
+                case EADDRINUSE:
+                    PERROR("Failed to create control socket at '%s' because it is already in use, if there is no other instance of subview running use -f to ignore it", addr.sun_path);
+                    break;
+                default:
+                    PERROR("Failed to create control socket at '%s' with error `%s`", addr.sun_path, strerror(errno));
+                    break;
+            }
             close(sock);
             sock = -1; // socket failed to connect so can't unlink since it might belong to another process
             exit_code = -1;
@@ -72,14 +92,15 @@ int main(int argc, char *argv[]) {
     }
 end:
     PDEBUG("exiting safely");
+    if (sock >= 0) {
+        close(sock);
+        if (!options->force)
+            unlink(addr.sun_path);
+    }
     free(options);
     for (int i = 0; i < MAX_LOG_FILES; i++) {
         fclose(log_files[i]);
         log_files[i] = NULL;
-    }
-    if (sock >= 0) {
-        close(sock);
-        unlink(addr.sun_path);
     }
     exit(exit_code);
 }

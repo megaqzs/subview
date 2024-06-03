@@ -26,11 +26,13 @@ void print_help(void) {
         "This program renders subtitles passed into it, and displays them as an overlay\n"
         "options:\n"
         "  -h          Show this help and exit\n"
+        "  -f          forcefully open the control socket, even if it already exists\n"
         "  -p          print the control socket path\n"
         "  -d          daemonise the program after creating control socket\n"
         "  -l <path>   print log messages to the file specified by path, replaces stderr if daemonising before\n"
+        "  -s <path>   set the path to the control socket\n"
         "  -V          Show program version and exit\n"
-        "  -v          set verbosity level of the program (default " STRINGIFY(LOG_LEVEL) ")\n"
+        "  -v <level>  set verbosity level of the program (default " STRINGIFY(LOG_LEVEL) ")\n"
         "                 3, DEBUG: print everything\n"
         "                 2, INFO: print usefull information\n"
         "                 1, WARN: print about problems\n"
@@ -44,7 +46,7 @@ int parse_args(int argc, char *argv[], options_t *options) {
     int parsing = 1;
     memcpy(options, &default_options, sizeof(*options));
     while (parsing) {
-        switch (getopt(argc, argv, "hpdVv:l:")) {
+        switch (getopt(argc, argv, "hfs:pdVv:l:")) {
             case '?':
             case 'h':
                 print_help();
@@ -54,6 +56,9 @@ int parse_args(int argc, char *argv[], options_t *options) {
                 return -2;
             case 'p':
                 options->print_path = true;
+                break;
+            case 'f':
+                options->force = true;
                 break;
             case 'd':
                 options->daemonise = true;
@@ -71,6 +76,9 @@ int parse_args(int argc, char *argv[], options_t *options) {
                     return -3;
                 }
                 log_files[i] = fopen(optarg, "a");
+                break;
+            case 's':
+                options->path = optarg;
                 break;
             case 'v':
                 char *endptr;
