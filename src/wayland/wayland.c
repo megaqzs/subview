@@ -17,7 +17,7 @@
 #define MAP_SIZE WIDTH*HEIGHT*4
 
 
-void *start_wayland_backend(void *);
+int start_wayland_backend(void);
 void stop_wayland_backend(void);
 void update_output(void);
 
@@ -72,12 +72,13 @@ static const struct wl_buffer_listener buffer_listener = {
 };
 
 pthread_mutex_t txt_buf_lock;
-char *inp;
+char *inp = NULL;
 static struct wl_display *display;
 static struct wl_registry *registry;
 static struct wl_compositor *compositor;
 static struct wl_shm *shm;
 static struct zwlr_layer_shell_v1 *layer_shell;
+static pthread_mutex_t outputs_lock;
 static struct wl_list outputs;
 static struct wl_buffer *buffer;
 
@@ -93,7 +94,9 @@ static void free_output(output_t *output) {
         wl_surface_destroy(output->surface);
     }
 
+	pthread_mutex_lock(&outputs_lock);
     wl_list_remove(&output->link);
+	pthread_mutex_unlock(&outputs_lock);
     free(output);
 }
 
@@ -119,13 +122,15 @@ static void layer_surface_configure_handler(
 }
 
 static void layer_surface_remove_handler(void *data, struct zwlr_layer_surface_v1 *surface) {
-	output_t *output;
-	wl_list_for_each(output, &outputs, link) {
+	output_t *output, *tmp;
+	pthread_mutex_lock(&outputs_lock);
+	wl_list_for_each_safe(output, tmp, &outputs, link) {
 		if (output->wlr_surf == surface) {
 			free_output(output);
 			break;
 		}
 	}
+	pthread_mutex_unlock(&outputs_lock);
 }
 
 static void output_geometry(void *data, struct wl_output *output, int32_t x,
@@ -189,18 +194,22 @@ static void global_handler(void *data, struct wl_registry *registry, uint32_t na
 			&wl_output_interface, 2);
 		output->wl_name = name;
 		wl_output_add_listener(output->wl_output, &output_listener, output);
+		pthread_mutex_lock(&outputs_lock);
 		wl_list_insert(&outputs, &output->link);
+		pthread_mutex_unlock(&outputs_lock);
 	}
 }
 
 static void global_remove_handler(void *data, struct wl_registry *registry, uint32_t name) {
-	output_t *output;
-	wl_list_for_each(output, &outputs, link) {
+	output_t *output, *tmp;
+	pthread_mutex_lock(&outputs_lock);
+	wl_list_for_each_safe(output, tmp, &outputs, link) {
 		if (output->wl_name == name) {
 			free_output(output);
 			break;
 		}
 	}
+	pthread_mutex_unlock(&outputs_lock);
 }
 
 static int allocate_shm_file(size_t size) {
@@ -247,7 +256,7 @@ static struct wl_buffer *draw_frame(output_t *output)
     //    }
     //}
 
-	if (output->new_data) {
+	if (inp) {
 		cr_surf = cairo_image_surface_create_for_data(data, CAIRO_FORMAT_ARGB32, WIDTH, HEIGHT, WIDTH*4);
 		cr = cairo_create(cr_surf);
 		cairo_surface_destroy(cr_surf);
@@ -315,15 +324,20 @@ static void frame_done(void *data, struct wl_callback *cb, uint32_t time) {
 
 void update_output(void) {
 	output_t *output;
+
+	pthread_mutex_lock(&outputs_lock);
 	wl_list_for_each(output, &outputs, link) {
 		output->new_data = true;
 	}
+	pthread_mutex_unlock(&outputs_lock);
 }
 
 void stop_wayland_backend(void) {
 	output_t *output, *tmp;
+	pthread_mutex_lock(&outputs_lock);
 	wl_list_for_each_safe(output, tmp, &outputs, link)
 		free_output(output);
+	pthread_mutex_unlock(&outputs_lock);
 	if (shm) {
 		wl_shm_destroy(shm);
 		shm = NULL;
@@ -335,7 +349,8 @@ void stop_wayland_backend(void) {
 	if (layer_shell) {
 		zwlr_layer_shell_v1_destroy(layer_shell);
 		layer_shell = NULL;
-	} if (registry) {
+	}
+	if (registry) {
 		wl_registry_destroy(registry);
 		registry = NULL;
 	}
@@ -344,32 +359,10 @@ void stop_wayland_backend(void) {
 		display = NULL;
 	}
 	pthread_mutex_destroy(&txt_buf_lock);
-}
+	pthread_mutex_destroy(&outputs_lock);
+} // TODO: fix race condition when called while function is active
 
-void *start_wayland_backend(void *arg) {
-	int ret = 0;
-	pthread_mutex_init(&txt_buf_lock, NULL);
-	display = wl_display_connect(NULL);
-
-	wl_list_init(&outputs);
-
-	if (display == NULL) {
-		puts("ERROR: failed to connect to compositor");
-		ret = -1;
-		goto deallocate;
-	}
-	registry = wl_display_get_registry(display);
-	wl_registry_add_listener(registry, &registry_listener, NULL);
-	wl_display_roundtrip(display); // wait for the "initial" set of globals to appear
-
-
-	// all our objects should be ready!
-	if (!compositor || !shm || !layer_shell) {
-		printf("ERROR: some wayland globals weren't found [%p, %p, %p]\n", compositor, shm, layer_shell);
-		ret = -1;
-		goto deallocate;
-	}
-
+void *_start_wayland_backend(void *arg) {
 	while (wl_display_dispatch(display) != -1) {
 	}
 	puts("ERROR: failed to dispatch events");
@@ -377,4 +370,37 @@ void *start_wayland_backend(void *arg) {
 deallocate:
 	stop_wayland_backend();
 	return NULL;
+}
+
+int start_wayland_backend(void) {
+	int ret = 0;
+	pthread_t inf;
+	pthread_mutex_init(&outputs_lock, NULL);
+	pthread_mutex_init(&txt_buf_lock, NULL);
+
+	wl_list_init(&outputs);
+	display = wl_display_connect(NULL);
+
+	if (display == NULL) {
+		puts("ERROR: failed to connect to compositor");
+		goto deallocate;
+	}
+
+	registry = wl_display_get_registry(display);
+	wl_registry_add_listener(registry, &registry_listener, NULL);
+	wl_display_roundtrip(display); // wait for the "initial" set of globals to appear
+
+	// all our objects should be ready!
+	if (!compositor || !shm || !layer_shell) {
+		printf("ERROR: some wayland globals weren't found [%p, %p, %p]\n", compositor, shm, layer_shell);
+		goto deallocate;
+	}
+
+	if (!pthread_create(&inf, NULL, _start_wayland_backend, NULL))
+		goto exit;
+
+deallocate:
+	stop_wayland_backend();
+exit:
+	return ret;
 }
