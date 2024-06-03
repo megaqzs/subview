@@ -72,7 +72,8 @@ static const struct wl_buffer_listener buffer_listener = {
 };
 
 pthread_mutex_t txt_buf_lock;
-char *inp = NULL;
+char *inp;
+_Atomic bool closed ;
 static struct wl_display *display;
 static struct wl_registry *registry;
 static struct wl_compositor *compositor;
@@ -107,7 +108,6 @@ static void layer_surface_configure_handler(
   uint32_t width,
   uint32_t height) {
 	output_t *output = data;
-	printf("configure event: w=%u, h=%u, surf=%p, s=%u\n", width, height, surface, serial);
 
 	if (!(width == 0 || width == WIDTH) || !(height == 0 || height == HEIGHT))
 		puts("ERROR: width or height are incorrect"); // TODO: handle
@@ -333,11 +333,19 @@ void update_output(void) {
 }
 
 void stop_wayland_backend(void) {
+	closed = true;
+}
+
+void *_start_wayland_backend(void *arg) {
+	int status;
+	while (!closed && (status = wl_display_dispatch(display)) != -1) {
+	} // only works because of frame events that make wl_display_dispatch not block forever for sure
+	// TODO: make it work without frame events, in case of no output
+	if (status == -1)
+		puts("ERROR: failed to dispatch events");
 	output_t *output, *tmp;
-	pthread_mutex_lock(&outputs_lock);
 	wl_list_for_each_safe(output, tmp, &outputs, link)
 		free_output(output);
-	pthread_mutex_unlock(&outputs_lock);
 	if (shm) {
 		wl_shm_destroy(shm);
 		shm = NULL;
@@ -360,16 +368,6 @@ void stop_wayland_backend(void) {
 	}
 	pthread_mutex_destroy(&txt_buf_lock);
 	pthread_mutex_destroy(&outputs_lock);
-} // TODO: fix race condition when called while function is active
-
-void *_start_wayland_backend(void *arg) {
-	while (wl_display_dispatch(display) != -1) {
-	}
-	puts("ERROR: failed to dispatch events");
-
-deallocate:
-	stop_wayland_backend();
-	return NULL;
 }
 
 int start_wayland_backend(void) {
