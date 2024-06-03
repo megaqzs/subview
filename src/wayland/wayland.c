@@ -76,7 +76,7 @@ static const struct wl_buffer_listener buffer_listener = {
 
 pthread_mutex_t txt_buf_lock;
 char *inp;
-_Atomic bool closed;
+_Atomic bool closed = true;
 static struct wl_display *display;
 static struct wl_registry *registry;
 static struct wl_compositor *compositor;
@@ -329,6 +329,7 @@ static void free_backend(void) {
 // backend thread function
 static void *_start_wayland_backend(void *arg) {
     int status;
+    closed = false;
     while (!closed && (status = wl_display_dispatch(display)) != -1) {
     } // only works because of frame events that make wl_display_dispatch not block forever for sure
     // TODO: make it work without frame events, in case of no output
@@ -348,8 +349,10 @@ void update_output(void) {
 }
 
 void stop_wayland_backend(void) {
-    closed = true;
-    pthread_join(backend, NULL);
+    if (!closed) {
+        closed = true;
+        pthread_join(backend, NULL);
+    }
 }
 
 int start_wayland_backend(options_t *options) {
