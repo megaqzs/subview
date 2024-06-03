@@ -60,29 +60,15 @@ void remove_node(list_node_t *node) {
 
 void insert_node(list_node_t *list, list_node_t *node, int start) {
     if (start) {
-        if (list->next == list) {
-            node->prev = list;
-            node->next = list;
-            list->next = node;
-            list->prev = node;
-        } else {
-            node->prev = list;
-            node->next = list->next;
-            list->next->prev = node;
-            list->next = node;
-        }
+        node->prev = list;
+        node->next = list->next;
+        list->next->prev = node;
+        list->next = node;
     } else {
-        if (list->next == list) {
-            node->next = list;
-            node->prev = list;
-            list->prev = node;
-            list->next = node;
-        } else {
-            node->next = list;
-            node->prev = list->prev;
-            list->prev->next = node;
-            list->prev = node;
-        }
+        node->next = list;
+        node->prev = list->prev;
+        list->prev->next = node;
+        list->prev = node;
     }
 }
 
@@ -279,7 +265,8 @@ int main(void) {
 	printf("exiting\n");
     list_node_t *node, *tmp;
     forward_list_loop_safe(keylist, node, tmp) {
-        free(CONTAINER_OF(node)); // free the key list on exit
+        key_node_t *key = CONTAINER_OF(node, key, node);
+        free(key); // free the key list on exit
     }
     write(sock, "", 1); // clear the subview buffer so that the text won't stay forever
     close(sock);
