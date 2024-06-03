@@ -4,15 +4,18 @@
 
 #define FORMAT CAIRO_FORMAT_ARGB32
 
+// get the distance between two consecutive lines in pixel buffer, in bytes
 uint32_t get_surf_stride(options_t *options) {
-    return options->height*cairo_format_stride_for_width(FORMAT, options->width);
+    return cairo_format_stride_for_width(FORMAT, options->width);
 }
 
+// draw plain style
 static inline void draw_plain(cairo_t *cr, options_t *options, PangoLayout *layout, PangoRectangle *extents, double x, double y) {
     cairo_move_to(cr, x-pango_units_to_double(extents->x), y-pango_units_to_double(extents->y));
     pango_cairo_show_layout(cr, layout);
 }
 
+// draw block style
 static inline void draw_block(cairo_t *cr, options_t *options, PangoLayout *layout, PangoRectangle *extents, double x, double y) {
     cairo_rectangle(cr,
             x-options->overscan_x,
@@ -22,6 +25,7 @@ static inline void draw_block(cairo_t *cr, options_t *options, PangoLayout *layo
     cairo_fill(cr);
 }
 
+// draw line block style
 static inline void draw_line_block(cairo_t *cr, options_t *options, PangoLayout *layout, PangoRectangle *extents, double x, double y) {
     PangoLayoutIter *iter;
     PangoRectangle line_extents;
@@ -39,12 +43,13 @@ static inline void draw_line_block(cairo_t *cr, options_t *options, PangoLayout 
     pango_layout_iter_free(iter);
 }
 
+// draw fill style
 static inline void draw_fill(cairo_t *cr, options_t *options, PangoLayout *layout, PangoRectangle *extents, double x, double y) {
     cairo_rectangle(cr, 0, 0, options->width, options->height);
     cairo_fill(cr);
 }
 
-void draw_text(char *text, char *buf, uint32_t stride, options_t *options) {
+void draw_text(const char *text, char *buf, uint32_t stride, options_t *options) {
     cairo_surface_t *cr_surf;
     cairo_t *cr;
     PangoLayout *layout;
@@ -65,11 +70,12 @@ void draw_text(char *text, char *buf, uint32_t stride, options_t *options) {
     pango_layout_set_text(layout, text, -1);
     pango_layout_set_width(layout, pango_units_from_double(options->width));
 
-    // draw text
+    // get the position for the text
     pango_layout_get_extents(layout, NULL, &extents);
-    x = options->width/2 - pango_units_to_double(extents.width/2);
-    y = options->height - pango_units_to_double(extents.height);
+    x = options->width/2 - pango_units_to_double(extents.width)/2; // center
+    y = options->height - pango_units_to_double(extents.height); // bottom
 
+    // set the background color and draw it (the things behind the text)
     cairo_set_source_rgba(cr, options->bg.r, options->bg.g, options->bg.b, options->bg.a);
     switch (options->style) {
         case PLAIN:
@@ -84,10 +90,13 @@ void draw_text(char *text, char *buf, uint32_t stride, options_t *options) {
             draw_fill(cr, options, layout, &extents, x, y);
             break;
     }
+
+    // set the foreground color and draw it (the text itself)
     cairo_set_source_rgba(cr, options->fg.r, options->fg.g, options->fg.b, options->fg.a);
     draw_plain(cr, options, layout, &extents, x, y);
 
 
+    // destroy objects
     g_object_unref(layout);
     cairo_destroy(cr);
     pango_font_description_free(desc);

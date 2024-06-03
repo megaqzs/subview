@@ -77,7 +77,7 @@ static const struct wl_buffer_listener buffer_listener = {
 };
 
 pthread_mutex_t txt_buf_lock; // subtitle text buffer lock
-char *inp;
+const char *inp;
 _Atomic bool closed = true;
 static struct wl_display *display;
 static struct wl_registry *registry;
@@ -118,9 +118,12 @@ static void layer_surface_configure_handler(
     output_t *output = data;
 
     PDEBUG("configure event triggered");
-    if (!(width == 0 || width == output->options.width) || !(height == 0 || height == output->options.height))
+    if (!(width == 0 || width == output->options.width) || !(height == 0 || height == output->options.height)) {
         PWARN("width or height are incorrect, expected %ux%u, but got %ux%u, ignoring",
                 output->options.width, output->options.height, width, height); // TODO: handle
+        if (width) output->options.width = width;
+        if (width) output->options.height = height;
+    }
 
     zwlr_layer_surface_v1_ack_configure(surface, serial);
 
@@ -131,6 +134,7 @@ static void layer_surface_configure_handler(
 
 }
 
+// handle surface destruction events by removing output
 static void layer_surface_remove_handler(void *data, struct zwlr_layer_surface_v1 *surface) {
     output_t *output, *tmp;
     pthread_mutex_lock(&outputs_lock);
@@ -171,17 +175,16 @@ static void output_done(void *data, struct wl_output *wl_output)
         wl_surface_set_input_region(output->surface, input_region);
         wl_region_destroy(input_region);
         
+        // attach surface to output based on options
         output->wlr_surf = zwlr_layer_shell_v1_get_layer_surface(layer_shell, output->surface, wl_output, ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY, "subtitles");
         zwlr_layer_surface_v1_add_listener(output->wlr_surf, &layer_shell_listener, output);
         zwlr_layer_surface_v1_set_size(output->wlr_surf, options->width, options->height);
-        zwlr_layer_surface_v1_set_anchor(output->wlr_surf, ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM);
+        zwlr_layer_surface_v1_set_anchor(output->wlr_surf, options->anchor);
         zwlr_layer_surface_v1_set_margin(output->wlr_surf, options->margin_top, options->margin_right, options->margin_bottom, options->margin_left);
         zwlr_layer_surface_v1_set_keyboard_interactivity(output->wlr_surf, ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_NONE);
     
-        output->cb = wl_surface_frame(output->surface);
-        wl_callback_add_listener(output->cb, &frame_listener, output);
-        wl_surface_commit(output->surface);
-        
+        // manually trigger frame_done to initialize the callback loop, use -1 to indicate that this is the first frame
+        frame_done(output, NULL, -1);
     }
 }
 
@@ -222,6 +225,7 @@ static void global_handler(void *data, struct wl_registry *registry, uint32_t na
     }
 }
 
+// handle output destruction (by disconnecting it for example)
 static void global_remove_handler(void *data, struct wl_registry *registry, uint32_t name) {
     output_t *output, *tmp;
     pthread_mutex_lock(&outputs_lock);
@@ -292,6 +296,7 @@ static void buffer_release(void *data, struct wl_buffer *buffer) {
 }
 
 static void frame_done(void *data, struct wl_callback *cb, uint32_t time) {
+    struct wl_buffer *buffer;
     if (cb)
         wl_callback_destroy(cb);
     output_t *output = data;
@@ -300,13 +305,13 @@ static void frame_done(void *data, struct wl_callback *cb, uint32_t time) {
     output->cb = wl_surface_frame(output->surface);
     wl_callback_add_listener(output->cb, &frame_listener, output);
 
-    /* Submit a frame for this event */
-    if (output->new_data) {
-        struct wl_buffer *buffer = draw_frame(output);
+    if (output->new_data && (buffer = draw_frame(output)) != NULL) {
+        // if there is new data available we draw it and mark the entire surface as dirty so that all of it would be updated
         wl_surface_attach(output->surface, buffer, 0, 0);
         wl_surface_damage_buffer(output->surface, 0, 0, INT32_MAX, INT32_MAX); // mark the entire surface as dirty
         output->new_data = false; // we have already read the data
     }
+    // in either case we commit to the surface in order to trigger callback, and draw the new surface if it exists
     wl_surface_commit(output->surface);
 }
 

@@ -82,7 +82,8 @@ int main(int argc, char *argv[]) {
 
         listen(sock, 0); // no need for backlog since it is a single client program
         if (!start_wayland_backend(options)) {
-            while (running) { // client connection loop
+            // client connection loop
+            while (running) {
                 FILE *conn = fdopen(accept(sock, NULL, NULL), "r+b");
                 PINFO("connection aquired for control socket");
 

@@ -11,6 +11,12 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 
+typedef struct list_node {
+    struct list_node *next;
+    struct list_node *prev;
+} list_node_t;
+
+void insert_before(list_node_t *list, list_node_t *node);
 void print_key_event(struct libinput_event *ev);
 
 const char *mapping[] = {
@@ -39,11 +45,6 @@ const char *mapping[] = {
 [125] = "◆", // super/windows key
 };
 
-typedef struct list_node {
-    struct list_node *next;
-    struct list_node *prev;
-} list_node_t;
-
 #define CONTAINER_OF(ptr, sample, member)				\
 	(__typeof__(sample))((char *)(ptr) -				\
 			     offsetof(__typeof__(*sample), member))
@@ -58,18 +59,18 @@ void remove_node(list_node_t *node) {
     node->prev->next = node->next;
 }
 
-void insert_node(list_node_t *list, list_node_t *node, int start) {
-    if (start) {
-        node->prev = list;
-        node->next = list->next;
-        list->next->prev = node;
-        list->next = node;
-    } else {
-        node->next = list;
-        node->prev = list->prev;
-        list->prev->next = node;
-        list->prev = node;
-    }
+inline void insert_before(list_node_t *list, list_node_t *node) {
+    node->next = list;
+    node->prev = list->prev;
+    list->prev->next = node;
+    list->prev = node;
+}
+
+inline void insert_after(list_node_t *list, list_node_t *node) {
+    node->prev = list;
+    node->next = list->next;
+    list->next->prev = node;
+    list->next = node;
 }
 
 typedef struct {
@@ -196,7 +197,7 @@ void print_key_event(struct libinput_event *ev) {
         else
              key->key = libevdev_event_code_get_name(EV_KEY, keycode)+sizeof("KEY");
 
-        insert_node(&keylist, &key->node, 0);
+        insert_before(&keylist, &key->node);
 
         forward_list_loop(keylist, node) {
             key = CONTAINER_OF(node, key, node);
