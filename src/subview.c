@@ -19,11 +19,6 @@ struct sockaddr_un addr = {0};
 void exit_hndlr(int signum) {
     if (signum >= 0) // if it is a real signal
         write(STDOUT_FILENO, "Interrupted\n", sizeof("Interrupted\n")); 
-
-    if (sock >= 0) {
-        close(sock);
-        unlink(addr.sun_path);
-    }
     closed = true;
 }
 
@@ -37,7 +32,6 @@ int gen_sock_addr(struct sockaddr_un *addr, size_t pathlen) {
 }
 
 int main(int argc, char *argv[]) {
-    bool running = true;
     int exit_code = 0;
     struct sigaction exit_action = {
         .sa_handler = exit_hndlr,
@@ -73,7 +67,7 @@ int main(int argc, char *argv[]) {
         if (options->daemonise)
             daemon(1, 1); // daemonise after socket creation if requested
 
-        listen(sock, 0); // no need for backlog since it is a single client program
+        listen(sock, 5);
         start_wayland_backend(options, sock);
     }
 end:
@@ -83,6 +77,9 @@ end:
         fclose(log_files[i]);
         log_files[i] = NULL;
     }
-    exit_hndlr(-1); // no signal number
+    if (sock >= 0) {
+        close(sock);
+        unlink(addr.sun_path);
+    }
     exit(exit_code);
 }
