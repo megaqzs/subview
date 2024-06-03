@@ -88,6 +88,9 @@ void *draw_text(void *arg) {
     pango_layout_get_extents(layout, NULL, &extents);
     x = options->width/2 - pango_units_to_double(extents.width)/2; // center
     y = options->height - pango_units_to_double(extents.height); // bottom
+    // make sure that at least the start of the subtitles is is view
+    x = x < 0 ? 0 : x;
+    y = y < 0 ? 0 : y;
 
     // set the background color and draw it (the things behind the text)
     cairo_set_source_rgba(cr, options->bg.r, options->bg.g, options->bg.b, options->bg.a);
