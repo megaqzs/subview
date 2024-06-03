@@ -12,7 +12,7 @@ FILE *log_files[MAX_LOG_FILES];
 void _logger(enum verbosity lvl, char *format, ...) {
     va_list args;
     va_start(args, format);
-    if (log_level <= lvl) {
+    if (log_level >= lvl) {
         for (int i = 0; i < MAX_LOG_FILES; i++) {
             if (log_files[i] != NULL)
                 vfprintf(log_files[i], format, args);
@@ -40,6 +40,7 @@ void print_help(char *name) {
 
 int parse_args(int argc, char *argv[], options_t *options) {
     log_files[0] = stderr;
+    enum verbosity curr_level;
     int parsing = 1;
     memcpy(options, &default_options, sizeof(*options));
     while (parsing) {
@@ -59,8 +60,8 @@ int parse_args(int argc, char *argv[], options_t *options) {
                 break;
             case 'v':
                 char *endptr;
-                log_level = strtol(optarg, &endptr, 10);
-                if (!*endptr && 0 <= log_level)
+                curr_level = strtol(optarg, &endptr, 10);
+                if (!*endptr)
                     break; // no need to continue checking since we found the log level
                 if (!strcmp(optarg, "DEBUG"))
                     log_level = DEBUG;
@@ -80,5 +81,6 @@ int parse_args(int argc, char *argv[], options_t *options) {
                 break;
         }
     }
+    log_level = curr_level;
     return 0;
 }
