@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <errno.h>
 #include <pthread.h>
 
 #define __USE_GNU
@@ -20,6 +21,7 @@ void update_output(void);
 void stop_wayland_backend(void);
 int start_wayland_backend(options_t *);
 
+// container type for output specific data
 typedef struct {
     struct wl_output *wl_output;
     struct zwlr_layer_surface_v1 *wlr_surf;
@@ -74,7 +76,7 @@ static const struct wl_buffer_listener buffer_listener = {
     .release = buffer_release
 };
 
-pthread_mutex_t txt_buf_lock;
+pthread_mutex_t txt_buf_lock; // subtitle text buffer lock
 char *inp;
 _Atomic bool closed = true;
 static struct wl_display *display;
@@ -87,6 +89,7 @@ static struct wl_list outputs;
 static struct wl_buffer *buffer;
 
 
+// free output related data in case of exit or output disconnection
 static void free_output(output_t *output) {
     PDEBUG("output %u is being freed", output->wl_name);
     if (output->wlr_surf) {
@@ -140,15 +143,18 @@ static void layer_surface_remove_handler(void *data, struct zwlr_layer_surface_v
     pthread_mutex_unlock(&outputs_lock);
 }
 
+// event listener for the output geometry event
 static void output_geometry(void *data, struct wl_output *output, int32_t x,
                             int32_t y, int32_t width_mm, int32_t height_mm, int32_t subpixel,
                             const char *make, const char *model, int32_t transform) {
 }
 
+// event listener for the output mode event
 static void output_mode(void *data, struct wl_output *output, uint32_t flags,
                         int32_t width, int32_t height, int32_t refresh) {
 }
 
+// event listener for the output done event
 static void output_done(void *data, struct wl_output *wl_output)
 {
     output_t *output = data;
@@ -180,12 +186,14 @@ static void output_done(void *data, struct wl_output *wl_output)
 }
 
 
+// event listener for the output scale event
 static void output_scale(void *data, struct wl_output *wl_output, int32_t scale)
 {
     output_t *output = data;
     output->scale = scale;
 }
 
+// register wayland server interfaces and add event listeners if needed
 static void global_handler(void *data, struct wl_registry *registry, uint32_t name, const char *interface, uint32_t version) {
     struct wl_output_ *output;
     if (strcmp(interface, wl_compositor_interface.name) == 0) {
@@ -241,16 +249,19 @@ static struct wl_buffer *draw_frame(output_t *output)
 
     PDEBUG("drawing frame");
 
-    stride = get_surf_stride(options);
+    stride = get_surf_stride(options); // the stride is the distance between rows in bytes
     size = stride*options->height;
-    fd = allocate_shm_file(size);
+    fd = allocate_shm_file(size); // allocate the shared memory buffer as a file
     if (fd == -1) {
+        PWARN("failed to create surface buffer file descriptor with error `%s`, continuing without drawing text", strerror(errno));
         return NULL;
     }
 
+    // memory map the shared mapping between thread and compositor for sharing the surface buffer
     char *data = mmap(NULL, size,
             PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
     if (data == MAP_FAILED) {
+        PWARN("failed to map surface buffer with error `%s`, continuing without drawing text", strerror(errno));
         close(fd);
         return NULL;
     }
@@ -259,18 +270,20 @@ static struct wl_buffer *draw_frame(output_t *output)
     pool = wl_shm_create_pool(shm, fd, size);
     buffer = wl_shm_pool_create_buffer(pool, 0,
             options->width, options->height, stride, WL_SHM_FORMAT_ARGB8888);
+    // the pool uses a fixed area which makes it hard to reuse
     wl_shm_pool_destroy(pool);
-    close(fd);
+    close(fd); // the mapping keeps the shared buffer memory open
 
+    // lock the input buffer since we are using it
+    pthread_mutex_lock(&txt_buf_lock);
     if (inp) {
         PDEBUG("got input, writing to surface");
-        pthread_mutex_lock(&txt_buf_lock);
         draw_text(inp, data, stride, options);
-        pthread_mutex_unlock(&txt_buf_lock);
     }
+    pthread_mutex_unlock(&txt_buf_lock);
 
-    munmap(data, size);
-    wl_buffer_add_listener(buffer, &buffer_listener, NULL);
+    munmap(data, size); // no need for the surface buffer on this end anymore
+    wl_buffer_add_listener(buffer, &buffer_listener, NULL); // add a callback for destroying the buffer after it has been used by the compositor
     return buffer;
 }
 
@@ -283,6 +296,7 @@ static void frame_done(void *data, struct wl_callback *cb, uint32_t time) {
         wl_callback_destroy(cb);
     output_t *output = data;
 
+    // add the callback listener in order to refresh the wayland event loop in case closed was set
     output->cb = wl_surface_frame(output->surface);
     wl_callback_add_listener(output->cb, &frame_listener, output);
 
@@ -290,8 +304,8 @@ static void frame_done(void *data, struct wl_callback *cb, uint32_t time) {
     if (output->new_data) {
         struct wl_buffer *buffer = draw_frame(output);
         wl_surface_attach(output->surface, buffer, 0, 0);
-        wl_surface_damage_buffer(output->surface, 0, 0, INT32_MAX, INT32_MAX);
-        output->new_data = false;
+        wl_surface_damage_buffer(output->surface, 0, 0, INT32_MAX, INT32_MAX); // mark the entire surface as dirty
+        output->new_data = false; // we have already read the data
     }
     wl_surface_commit(output->surface);
 }
@@ -326,18 +340,20 @@ static void free_backend(void) {
     pthread_mutex_destroy(&outputs_lock);
 }
 
-// backend thread function
+// backend thread function that runs the event loop
 static void *_start_wayland_backend(void *arg) {
     int status;
     closed = false;
+    // run for every event as long as closed wasn't set by anyone and there was no error in wl_display_dispatch
     while (!closed && (status = wl_display_dispatch(display)) != -1) {
     } // only works because of frame events that make wl_display_dispatch not block forever for sure
     // TODO: make it work without frame events, in case of no output
     if (status == -1)
-        puts("ERROR: failed to dispatch events");
+        PERROR("failed to dispatch events");
     free_backend();
 }
 
+// signal the output callbacks in the wayland event loop that there is new data to be drawn
 void update_output(void) {
     output_t *output;
 
@@ -348,6 +364,7 @@ void update_output(void) {
     pthread_mutex_unlock(&outputs_lock);
 }
 
+// set the closed variable and wait for the wayland event loop thread to finish
 void stop_wayland_backend(void) {
     if (!closed) {
         closed = true;
@@ -355,6 +372,7 @@ void stop_wayland_backend(void) {
     }
 }
 
+// starts the wayland event loop thread
 int start_wayland_backend(options_t *options) {
     pthread_mutex_init(&outputs_lock, NULL);
     pthread_mutex_init(&txt_buf_lock, NULL);
