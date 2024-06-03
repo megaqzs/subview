@@ -245,7 +245,6 @@ static void output_scale(void *data, struct wl_output *wl_output, int32_t scale)
 
 // register wayland server interfaces and add event listeners if needed
 static void global_handler(void *data, struct wl_registry *registry, uint32_t name, const char *interface, uint32_t version) {
-    struct wl_output_ *output;
     options_t *options = data;
     if (strcmp(interface, wl_compositor_interface.name) == 0) {
         PDEBUG("registering compositor interface");
