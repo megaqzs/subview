@@ -3,23 +3,21 @@
 #include <string.h>
 #include <unistd.h>
 #include <pthread.h>
-#include <pango/pangocairo.h>
 
 #define __USE_GNU
 #include <sys/mman.h>
-#include "config.h"
 #include <wayland-client.h>
 #include <stdbool.h>
 
 #include "zwlr-shell.h"
-#include "config.h"
+#include "options.h"
+#include "pangocairo/renderer.h"
 
-#define MAP_SIZE WIDTH*HEIGHT*4
 
 
-int start_wayland_backend(void);
-void stop_wayland_backend(void);
 void update_output(void);
+void stop_wayland_backend(void);
+int start_wayland_backend(options_t *);
 
 typedef struct {
     struct wl_output *wl_output;
@@ -29,6 +27,7 @@ typedef struct {
     uint32_t wl_name;
     _Atomic bool new_data;
     struct wl_list link;
+    options_t options;
 } output_t;
 
 static void free_output(output_t *);
@@ -49,10 +48,8 @@ static struct wl_buffer *draw_frame(output_t *output);
 static int allocate_shm_file(size_t);
 static void buffer_release(void *, struct wl_buffer *);
 static void free_backend(void);
+static pthread_t backend;
 static void *_start_wayland_backend(void *);
-void update_output(void);
-void stop_wayland_backend(void);
-int start_wayland_backend(void);
 
 static const struct zwlr_layer_surface_v1_listener layer_shell_listener = {
     .configure = layer_surface_configure_handler,
@@ -113,8 +110,8 @@ static void layer_surface_configure_handler(
   uint32_t height) {
     output_t *output = data;
 
-    if (!(width == 0 || width == WIDTH) || !(height == 0 || height == HEIGHT))
-        puts("ERROR: width or height are incorrect"); // TODO: handle
+    if (!(width == 0 || width == output->options.width) || !(height == 0 || height == output->options.height))
+        fputs("ERROR: width or height are incorrect\n", stderr); // TODO: handle
 
     zwlr_layer_surface_v1_ack_configure(surface, serial);
 
@@ -149,6 +146,7 @@ static void output_mode(void *data, struct wl_output *output, uint32_t flags,
 static void output_done(void *data, struct wl_output *wl_output)
 {
     output_t *output = data;
+    options_t *options = &output->options;
     int fd;
 
     if (!output->wlr_surf) {
@@ -162,9 +160,9 @@ static void output_done(void *data, struct wl_output *wl_output)
         
         output->wlr_surf = zwlr_layer_shell_v1_get_layer_surface(layer_shell, output->surface, wl_output, ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY, "subtitles");
         zwlr_layer_surface_v1_add_listener(output->wlr_surf, &layer_shell_listener, output);
-        zwlr_layer_surface_v1_set_size(output->wlr_surf, WIDTH, HEIGHT);
+        zwlr_layer_surface_v1_set_size(output->wlr_surf, options->width, options->height);
         zwlr_layer_surface_v1_set_anchor(output->wlr_surf, ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM);
-        zwlr_layer_surface_v1_set_margin(output->wlr_surf, MARGIN_TOP, MARGIN_RIGHT, MARGIN_BOTTOM, MARGIN_LEFT);
+        zwlr_layer_surface_v1_set_margin(output->wlr_surf, options->margin_top, options->margin_right, options->margin_bottom, options->margin_left);
         zwlr_layer_surface_v1_set_keyboard_interactivity(output->wlr_surf, ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_NONE);
     
         struct wl_callback *cb = wl_surface_frame(output->surface);
@@ -197,6 +195,7 @@ static void global_handler(void *data, struct wl_registry *registry, uint32_t na
         output->wl_output = wl_registry_bind(registry, name,
             &wl_output_interface, 2);
         output->wl_name = name;
+        memcpy(&output->options, data, sizeof(output->options));
         wl_output_add_listener(output->wl_output, &output_listener, output);
         pthread_mutex_lock(&outputs_lock);
         wl_list_insert(&outputs, &output->link);
@@ -224,82 +223,39 @@ static int allocate_shm_file(size_t size) {
 
 static struct wl_buffer *draw_frame(output_t *output)
 {
-    int fd = allocate_shm_file(MAP_SIZE);
-    cairo_surface_t *cr_surf;
-    cairo_t *cr;
-    PangoLayout *layout;
-    PangoFontDescription *desc;
-    PangoRectangle extents;
-    double x,y;
-
+    int fd;
+    options_t *options = &output->options;
     struct wl_shm_pool *pool;
+    uint32_t stride, size;
+
+    stride = get_surf_stride(options);
+    size = stride*options->height;
+    fd = allocate_shm_file(size);
     if (fd == -1) {
         return NULL;
     }
 
-    char *data = mmap(NULL, MAP_SIZE,
+    char *data = mmap(NULL, size,
             PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
     if (data == MAP_FAILED) {
         close(fd);
         return NULL;
     }
 
-    pool = wl_shm_create_pool(shm, fd, MAP_SIZE);
+
+    pool = wl_shm_create_pool(shm, fd, size);
     buffer = wl_shm_pool_create_buffer(pool, 0,
-            WIDTH, HEIGHT, WIDTH*4, WL_SHM_FORMAT_ARGB8888);
+            options->width, options->height, stride, WL_SHM_FORMAT_ARGB8888);
     wl_shm_pool_destroy(pool);
     close(fd);
 
-    /* Draw checkerboxed background, usefull for debugging and setting config.h */
-    //for (int y = 0; y < HEIGHT; ++y) {
-    //    for (int x = 0; x < WIDTH; ++x) {
-    //        if ((x + y / 10 * 10) % 20 < 10)
-    //            ((uint32_t*)data)[y * WIDTH + x] = 0x22660000;
-    //        else
-    //            ((uint32_t*)data)[y * WIDTH + x] = 0x22000066;
-    //    }
-    //}
-
     if (inp) {
-        cr_surf = cairo_image_surface_create_for_data(data, CAIRO_FORMAT_ARGB32, WIDTH, HEIGHT, WIDTH*4);
-        cr = cairo_create(cr_surf);
-        cairo_surface_destroy(cr_surf);
-
-        // initialize layout
-        desc = pango_font_description_from_string(FONT_DESC);
-        layout = pango_cairo_create_layout(cr);
-        pango_layout_set_font_description(layout, desc);
-
-        // write the input to the layout without the input changing
         pthread_mutex_lock(&txt_buf_lock);
-        pango_layout_set_text(layout, inp, -1);
+        draw_text(inp, data, stride, options);
         pthread_mutex_unlock(&txt_buf_lock);
-        pango_layout_set_width(layout, pango_units_from_double(WIDTH));
-
-
-        // get text positioning information
-        pango_layout_get_extents(layout, NULL, &extents);
-        x = WIDTH/2 - pango_units_to_double(extents.width/2);
-        y = HEIGHT - pango_units_to_double(extents.height);
-
-        // draw background behind text
-        cairo_set_source_rgba(cr, 0.2, 0.2, 0.2, 0.7);
-        cairo_rectangle(cr,
-                x-OVERSCAN_X,
-                y-OVERSCAN_Y,
-                pango_units_to_double(extents.width)+2*OVERSCAN_X,
-                pango_units_to_double(extents.height)+2*OVERSCAN_Y);
-        cairo_fill(cr);
-
-        // draw text
-        cairo_move_to(cr, x-pango_units_to_double(extents.x), y-pango_units_to_double(extents.y));
-        cairo_set_source_rgba(cr, 1, 1, 1, 1);
-        pango_cairo_show_layout(cr, layout);
-
-        cairo_destroy(cr);
     }
 
-    munmap(data, MAP_SIZE);
+    munmap(data, size);
     wl_buffer_add_listener(buffer, &buffer_listener, NULL);
     return buffer;
 }
@@ -376,10 +332,10 @@ void update_output(void) {
 
 void stop_wayland_backend(void) {
     closed = true;
+    pthread_join(backend, NULL);
 }
 
-int start_wayland_backend(void) {
-    pthread_t inf;
+int start_wayland_backend(options_t *options) {
     pthread_mutex_init(&outputs_lock, NULL);
     pthread_mutex_init(&txt_buf_lock, NULL);
 
@@ -393,7 +349,7 @@ int start_wayland_backend(void) {
     }
 
     registry = wl_display_get_registry(display);
-    wl_registry_add_listener(registry, &registry_listener, NULL);
+    wl_registry_add_listener(registry, &registry_listener, options);
     wl_display_roundtrip(display); // wait for the "initial" set of globals to appear
 
     // all our objects should be ready!
@@ -403,7 +359,7 @@ int start_wayland_backend(void) {
         return -2;
     }
 
-    if (!pthread_create(&inf, NULL, _start_wayland_backend, NULL))
+    if (!pthread_create(&backend, NULL, _start_wayland_backend, NULL))
         return 0;
 
     free_backend();
