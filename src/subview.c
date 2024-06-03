@@ -82,9 +82,11 @@ int main(int argc, char *argv[]) {
 
         if (options->print_path)
             puts(addr.sun_path); // print the socket path if requested, must be before deamonisation
+        fclose(stdout);
 
-        if (options->daemonise)
+        if (options->daemonise) {
             daemon(1, 1); // daemonise after socket creation if requested
+        }
 
         listen(sock, 5);
         start_wayland_backend(options, sock);
