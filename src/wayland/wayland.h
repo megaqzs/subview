@@ -4,7 +4,7 @@
 
 //extern struct wl_buffer *buffer;
 extern pthread_mutex_t txt_buf_lock;
-extern uint32_t inp;
+extern char inp[40];
 void *start_wayland_backend(void *);
 void update_output(void);
 void stop_wayland_backend(void);
