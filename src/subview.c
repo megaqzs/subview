@@ -17,8 +17,7 @@ struct sockaddr_un addr = {0};
 
 // PINFO won't work acording to signal-safety(7) man page
 void exit_hndlr(int signum) {
-    if (signum >= 0) // if it is a real signal
-        write(STDOUT_FILENO, "Interrupted\n", sizeof("Interrupted\n")); 
+    write(STDERR_FILENO, "Interrupted\n", sizeof("Interrupted\n"));
     closed = true;
 }
 
