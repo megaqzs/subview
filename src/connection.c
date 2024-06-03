@@ -7,9 +7,16 @@
 #include "connection.h"
 #include "utils.h"
 
+/*
+ * Warning the objects exported by this code are not thread safe,
+ * use with threads at your own risk.
+*/
+
 // can only be used with variables and constants
 #define MIN(X, Y) ((X) < (Y) ? (X) : (Y))
 #define MAX(X, Y) ((X) > (Y) ? (X) : (Y))
+
+LIST_HEAD(connection_list);
 
 connection_t *new_connection(struct pollfd *pfd, int fd) {
     PINFO("creating connection for fd %d", fd);
@@ -29,6 +36,7 @@ connection_t *new_connection(struct pollfd *pfd, int fd) {
     conn->inp_pos = conn->inp_size = conn->vis_size = 0;
     conn->inp_buff = conn->vis_buff = NULL;
     conn->refcount = 1; // set to 1 because the caller has a reference
+    list_add(&conn->link, &connection_list);
     return conn;
 }
 
@@ -40,6 +48,7 @@ void refdrop_connection(connection_t *conn) {
         PINFO("destroying connection for fd %d", conn->pfd->fd);
         close(conn->pfd->fd);
         conn->pfd->fd = -conn->pfd->fd;
+        list_del(&connection_list);
         free(conn->vis_buff);
         free(conn->inp_buff);
         free(conn);

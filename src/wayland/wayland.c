@@ -53,7 +53,7 @@ enum {
     CONNLIST_START,
 };
 
-static region_t *new_region(output_t *, connection_t *);
+static void make_region(output_t *, connection_t *);
 static void free_region(output_t *, region_t *);
 static void free_output(output_t *);
 static void layer_surface_configure_handler(void *, struct zwlr_layer_surface_v1 *,
@@ -82,8 +82,8 @@ static const struct zwlr_layer_surface_v1_listener layer_shell_listener = {
 static const struct wl_output_listener output_listener = {
     .geometry = output_geometry,
     .mode = output_mode,
-    .done = output_done,
     .scale = output_scale,
+    .done = output_done,
 };
 static const struct wl_registry_listener registry_listener = {
     .global = global_handler,
@@ -107,9 +107,13 @@ static size_t nfds;
 static size_t nfds_allocated;
 
 // create region data for new connections
-static region_t *new_region(output_t *output, connection_t *conn) {
+static void make_region(output_t *output, connection_t *conn) {
     PDEBUG("region for fd %d is being allocated", conn->pfd->fd);
     region_t *region = malloc(sizeof(region_t));
+    if (!region) {
+        PWARN("Failed to allocate new region, continuing without it");
+        return;
+    }
 
     // update region count and set the region update flag
     output->regupd = true;
@@ -120,7 +124,6 @@ static region_t *new_region(output_t *output, connection_t *conn) {
     region->connection = conn;
     reftick_connection(conn);
     wl_list_insert(&output->regions, &region->link);
-
 }
 
 static void free_region(output_t *output, region_t *region) {
@@ -202,8 +205,13 @@ static void output_mode(void *data, struct wl_output *output, uint32_t flags,
 static void output_done(void *data, struct wl_output *wl_output) {
     output_t *output = data;
     options_t *options = &output->options;
+    connection_t *conn;
 
     PDEBUG("configuring output %u", output->wl_name);
+    wl_list_insert(&outputs, &output->link);
+    wl_list_init(&output->regions);
+    list_for_each_entry(conn, &connection_list, link)
+        make_region(output, conn);
     if (!output->wlr_surf) {
         output->surface = wl_compositor_create_surface(compositor);
         
@@ -238,6 +246,7 @@ static void output_scale(void *data, struct wl_output *wl_output, int32_t scale)
 // register wayland server interfaces and add event listeners if needed
 static void global_handler(void *data, struct wl_registry *registry, uint32_t name, const char *interface, uint32_t version) {
     struct wl_output_ *output;
+    options_t *options = data;
     if (strcmp(interface, wl_compositor_interface.name) == 0) {
         PDEBUG("registering compositor interface");
         compositor = wl_registry_bind(registry, name,
@@ -253,14 +262,11 @@ static void global_handler(void *data, struct wl_registry *registry, uint32_t na
     } else if (strcmp(interface, wl_output_interface.name) == 0) {
         PDEBUG("registering output interface");
         output_t *output = calloc(1, sizeof(output_t));
-        output->regions_size = 0;
-        wl_list_init(&output->regions);
+        output->wl_name = name;
+        output->options = *options;
         output->wl_output = wl_registry_bind(registry, name,
             &wl_output_interface, 2);
-        output->wl_name = name;
-        memcpy(&output->options, data, sizeof(output->options));
         wl_output_add_listener(output->wl_output, &output_listener, output);
-        wl_list_insert(&outputs, &output->link);
     }
 }
 
@@ -513,7 +519,7 @@ static void event_loop() {
             if (conn) {
                 PDEBUG("new connection from fd %d", fd);
                 wl_list_for_each(output, &outputs, link)
-                    new_region(output, conn);
+                    make_region(output, conn);
                 refdrop_connection(conn); // drop reference since we are going out of the context of the reference
             }
         }

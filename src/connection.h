@@ -3,7 +3,9 @@
 
 #include <poll.h>
 #include <unistd.h>
+#include "list.h"
 
+extern struct list_head connection_list;
 #define INITIAL_BUFFER_SIZE 3
 typedef struct {
     size_t vis_size;
@@ -15,6 +17,7 @@ typedef struct {
 
     int updcount; // the number of times the data has beed updated, usefull for detecting changes to vis_buff
     int refcount; // reference count for the connection
+    struct list_head link;
     struct pollfd *pfd;
 } connection_t;
 
