@@ -1,3 +1,19 @@
+# Editor temporary files
+*~
+*.swp
+
+# Eclipse
+.settings/
+.autotools
+.cproject
+.project
+
+# Other temporary files
+*.tmp
+
+# build directory
 build/*
+
+# Executables
 subview
 examples/keyview/keyview
