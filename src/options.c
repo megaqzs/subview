@@ -15,10 +15,10 @@ void print_help(char *name) {
         "  -h          Show this help and exit\n"
         "  -V          Show program version and exit\n"
         "  -v          set verbosity level of the program (default " STRINGIFY(LOG_LEVEL) ")\n"
-        "                 DEBUG: print everything\n"
-        "                 INFO: print usefull information\n"
-        "                 WARN: print about problems\n"
-        "                 ERROR: only print when the program can't continue\n",
+        "                 4, DEBUG: print everything\n"
+        "                 3, INFO: print usefull information\n"
+        "                 2, WARN: print about problems\n"
+        "                 1, ERROR: only print when the program can't continue\n",
         name);
 }
 
@@ -35,13 +35,13 @@ int parse_args(int argc, char *argv[], options_t *options) {
                 printf("%s version " VERSION "\n", argc ? argv[0] : PROGNAME);
                 return -2;
             case 'v':
-                if (!strcmp(optarg, "DEBUG"))
+                if (!strcmp(optarg, "4") || !strcmp(optarg, "DEBUG"))
                     log_level = DEBUG;
-                else if (!strcmp(optarg, "INFO"))
+                else if (!strcmp(optarg, "3") || !strcmp(optarg, "INFO"))
                     log_level = INFO;
-                else if (!strcmp(optarg, "WARN"))
+                else if (!strcmp(optarg, "2") || !strcmp(optarg, "WARN"))
                     log_level = WARN;
-                else if (!strcmp(optarg, "ERROR"))
+                else if (!strcmp(optarg, "1") || !strcmp(optarg, "ERROR"))
                     log_level = ERROR;
                 else {
                     print_help(argc ? argv[0] : PROGNAME);
