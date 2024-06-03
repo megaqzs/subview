@@ -17,7 +17,8 @@ struct sockaddr_un addr = {0};
 
 // PINFO won't work acording to signal-safety(7) man page
 void exit_hndlr(int signum) {
-    write(STDERR_FILENO, "Interrupted\n", sizeof("Interrupted\n"));
+    char message[] = "Interrupted\n";
+    write(STDERR_FILENO, message, sizeof(message));
     closed = true;
 }
 
@@ -50,9 +51,13 @@ int main(int argc, char *argv[]) {
         .sa_flags = SA_RESETHAND
     };
 
-    ssize_t ilen;
-    size_t len = 0;
-    char *line = NULL;
+    // put the exit handlers as soon as possible
+    sigaction(SIGQUIT, &exit_action, NULL);
+    sigaction(SIGALRM, &exit_action, NULL);
+    sigaction(SIGHUP, &exit_action, NULL);
+    sigaction(SIGTERM, &exit_action, NULL);
+    sigaction(SIGINT, &exit_action, NULL);
+
     options_t *options = malloc(sizeof(*options));
     if (!parse_args(argc, argv, options)) {
         sock = socket(AF_UNIX, SOCK_STREAM, 0);
@@ -73,13 +78,6 @@ int main(int argc, char *argv[]) {
             exit_code = -1;
             goto end;
         }
-        // put the exit handlers as soon as possible
-        sigaction(SIGQUIT, &exit_action, NULL);
-        sigaction(SIGALRM, &exit_action, NULL);
-        sigaction(SIGHUP, &exit_action, NULL);
-        sigaction(SIGTERM, &exit_action, NULL);
-        sigaction(SIGINT, &exit_action, NULL);
-
         if (options->print_path)
             puts(addr.sun_path); // print the socket path if requested, must be before deamonisation
         fclose(stdout);
