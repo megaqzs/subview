@@ -87,6 +87,7 @@ static struct wl_buffer *buffer;
 
 
 static void free_output(output_t *output) {
+    PDEBUG("output %u is being freed", output->wl_name);
     if (output->wlr_surf) {
         zwlr_layer_surface_v1_destroy(output->wlr_surf);
     }
@@ -97,9 +98,7 @@ static void free_output(output_t *output) {
         wl_surface_destroy(output->surface);
     }
 
-    pthread_mutex_lock(&outputs_lock);
     wl_list_remove(&output->link);
-    pthread_mutex_unlock(&outputs_lock);
     free(output);
 }
 
@@ -152,6 +151,7 @@ static void output_done(void *data, struct wl_output *wl_output)
     options_t *options = &output->options;
     int fd;
 
+    PDEBUG("configuring output %u", output->wl_name);
     if (!output->wlr_surf) {
         output->surface = wl_compositor_create_surface(compositor);
         
@@ -185,15 +185,19 @@ static void output_scale(void *data, struct wl_output *wl_output, int32_t scale)
 static void global_handler(void *data, struct wl_registry *registry, uint32_t name, const char *interface, uint32_t version) {
     struct wl_output_ *output;
     if (strcmp(interface, wl_compositor_interface.name) == 0) {
+        PDEBUG("registering compositor interface");
         compositor = wl_registry_bind(registry, name,
             &wl_compositor_interface, 4);
     } else if (strcmp(interface, wl_shm_interface.name) == 0) {
+        PDEBUG("registering shm interface");
         shm = wl_registry_bind(registry, name,
             &wl_shm_interface, 1);
     } else if (strcmp(interface, zwlr_layer_shell_v1_interface.name) == 0) {
+        PDEBUG("registering layer shell interface");
         layer_shell = wl_registry_bind(registry, name,
             &zwlr_layer_shell_v1_interface, 1);
     } else if (strcmp(interface, wl_output_interface.name) == 0) {
+        PDEBUG("registering output interface");
         output_t *output = calloc(1, sizeof(output_t));
         output->wl_output = wl_registry_bind(registry, name,
             &wl_output_interface, 2);
@@ -231,6 +235,8 @@ static struct wl_buffer *draw_frame(output_t *output)
     struct wl_shm_pool *pool;
     uint32_t stride, size;
 
+    PDEBUG("drawing frame");
+
     stride = get_surf_stride(options);
     size = stride*options->height;
     fd = allocate_shm_file(size);
@@ -253,6 +259,7 @@ static struct wl_buffer *draw_frame(output_t *output)
     close(fd);
 
     if (inp) {
+        PDEBUG("got input, writing to surface");
         pthread_mutex_lock(&txt_buf_lock);
         draw_text(inp, data, stride, options);
         pthread_mutex_unlock(&txt_buf_lock);
@@ -285,8 +292,10 @@ static void frame_done(void *data, struct wl_callback *cb, uint32_t time) {
     wl_surface_commit(output->surface);
 }
 
+// needs to be executed in the backend thread if it's running
 static void free_backend(void) {
     output_t *output, *tmp;
+    PDEBUG("freeing backend");
     wl_list_for_each_safe(output, tmp, &outputs, link)
         free_output(output);
     if (shm) {
@@ -313,6 +322,7 @@ static void free_backend(void) {
     pthread_mutex_destroy(&outputs_lock);
 }
 
+// backend thread function
 static void *_start_wayland_backend(void *arg) {
     int status;
     while (!closed && (status = wl_display_dispatch(display)) != -1) {
