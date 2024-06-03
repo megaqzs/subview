@@ -12,6 +12,7 @@
 #define MAX(X, Y) ((X) > (Y) ? (X) : (Y))
 
 connection_t *new_connection(struct pollfd *pfd, int fd) {
+    PINFO("creating connection for fd %d", fd);
     connection_t *conn = malloc(sizeof(connection_t));
     if (conn == NULL)
         return NULL;
@@ -36,7 +37,7 @@ void reftick_connection(connection_t *connection) {
 }
 void refdrop_connection(connection_t *conn) {
     if (!(--conn->refcount)) {
-        PDEBUG("freeing connection for fd %d", conn->pfd->fd);
+        PINFO("destroying connection for fd %d", conn->pfd->fd);
         close(conn->pfd->fd);
         conn->pfd->fd = -conn->pfd->fd;
         free(conn->vis_buff);

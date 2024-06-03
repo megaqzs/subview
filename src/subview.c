@@ -46,9 +46,9 @@ int main(int argc, char *argv[]) {
         sock = socket(AF_UNIX, SOCK_STREAM, 0);
         if (gen_sock_addr(&addr, sizeof(addr.sun_path)) || bind(sock, (struct sockaddr*) &addr, sizeof(addr))) {
             if (errno == ENAMETOOLONG)
-                PERROR("Failed to create control socket since path was too long, exiting due to unexpected behavior", strerror(errno));
+                PERROR("Failed to create control socket since path was too long");
             else
-                PERROR("Failed to create control socket at '%s' with error `%s`, exiting due to unexpected behavior", addr.sun_path, strerror(errno));
+                PERROR("Failed to create control socket at '%s' with error `%s`", addr.sun_path, strerror(errno));
             close(sock);
             sock = -1; // socket failed to connect so can't unlink since it might belong to another process
             exit_code = -1;

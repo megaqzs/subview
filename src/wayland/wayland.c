@@ -21,6 +21,7 @@
 #define INITIAL_CONNLIST_SIZE 50
 
 int start_wayland_backend(options_t *, int);
+_Atomic bool closed = true;
 
 typedef struct {
     int updcount;
@@ -45,6 +46,12 @@ typedef struct {
     struct wl_list link;
     options_t options;
 } output_t;
+
+enum {
+    WAYLAND_POLLFD,
+    CONTROL_POLLFD,
+    CONNLIST_START,
+};
 
 static region_t *new_region(output_t *, connection_t *);
 static void free_region(output_t *, region_t *);
@@ -89,24 +96,15 @@ static const struct wl_buffer_listener buffer_listener = {
     .release = buffer_release
 };
 
-_Atomic bool closed = true;
 static struct wl_display *display;
 static struct wl_registry *registry;
 static struct wl_compositor *compositor;
 static struct wl_shm *shm;
 static struct zwlr_layer_shell_v1 *layer_shell;
 static struct wl_list outputs;
-static struct wl_buffer *buffer;
-
-enum {
-    WAYLAND_POLLFD,
-    CONTROL_POLLFD,
-    CONNLIST_START,
-};
-
-struct pollfd *fds;
-size_t nfds;
-size_t nfds_allocated;
+static struct pollfd *fds;
+static size_t nfds;
+static size_t nfds_allocated;
 
 // create region data for new connections
 static region_t *new_region(output_t *output, connection_t *conn) {
@@ -136,7 +134,7 @@ static void free_region(output_t *output, region_t *region) {
 
 // free output related data in case of exit or output disconnection
 static void free_output(output_t *output) {
-    PDEBUG("output %u is being freed", output->wl_name);
+    PINFO("output %u is being destroyed", output->wl_name);
     region_t *region, *tmp;
     wl_list_for_each_safe(region, tmp, &output->regions, link)
         free_region(output, region);
@@ -164,6 +162,7 @@ static void layer_surface_configure_handler(
   uint32_t width,
   uint32_t height) {
     output_t *output = data;
+    struct wl_buffer *buffer;
 
     PDEBUG("configure event triggered");
     if (!(width == 0 || width == output->options.width) || !(height == 0 || height == output->options.height)) {
@@ -174,12 +173,7 @@ static void layer_surface_configure_handler(
     }
 
     zwlr_layer_surface_v1_ack_configure(surface, serial);
-
-    buffer = draw_frame(output);
-    wl_surface_attach(output->surface, buffer, 0, 0);
-    wl_surface_commit(output->surface);
-
-
+    frame_done(output, NULL, -1); // draw surface using new dimensions
 }
 
 // handle surface destruction events by removing output
@@ -205,8 +199,7 @@ static void output_mode(void *data, struct wl_output *output, uint32_t flags,
 }
 
 // event listener for the output done event
-static void output_done(void *data, struct wl_output *wl_output)
-{
+static void output_done(void *data, struct wl_output *wl_output) {
     output_t *output = data;
     options_t *options = &output->options;
 
@@ -227,9 +220,10 @@ static void output_done(void *data, struct wl_output *wl_output)
         zwlr_layer_surface_v1_set_anchor(output->wlr_surf, options->anchor);
         zwlr_layer_surface_v1_set_margin(output->wlr_surf, options->margin_top, options->margin_right, options->margin_bottom, options->margin_left);
         zwlr_layer_surface_v1_set_keyboard_interactivity(output->wlr_surf, ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_NONE);
-    
-        // manually trigger frame_done to initialize the callback loop, use -1 to indicate that this is the first frame
-        frame_done(output, NULL, -1);
+
+        output->cb = wl_surface_frame(output->surface);
+        wl_callback_add_listener(output->cb, &frame_listener, output);
+        wl_surface_commit(output->surface);
     }
 }
 
@@ -294,6 +288,7 @@ static struct wl_buffer *draw_frame(output_t *output)
     options_t *options = &output->options;
     struct wl_shm_pool *pool;
     uint32_t stride, size;
+    struct wl_buffer *buffer = NULL;
 
     PDEBUG("drawing frame");
 
@@ -348,7 +343,7 @@ static struct wl_buffer *draw_frame(output_t *output)
         if ((output->regupd || region->updcount != region->connection->updcount)) {
             int err = pthread_join(region->thread, NULL);
             if (err)
-                PERROR("failed to join thread with error %s", strerror(err));
+                PWARN("failed to join thread with error `%s`, some regions might not be fully drawn", strerror(err));
         }
     }
 
@@ -364,16 +359,16 @@ static void buffer_release(void *data, struct wl_buffer *buffer) {
 static void frame_done(void *data, struct wl_callback *cb, uint32_t time) {
     region_t *region;
     struct wl_buffer *buffer;
-    if (cb)
-        wl_callback_destroy(cb);
     output_t *output = data;
+    if (time != -1) {
+        if (cb)
+            wl_callback_destroy(cb);
+        // add the callback listener in order to get notifications for when to draw frames
+        output->cb = wl_surface_frame(output->surface);
+        wl_callback_add_listener(output->cb, &frame_listener, output);
+    }
 
-    // add the callback listener in order to get notifications for when to draw frames
-    output->cb = wl_surface_frame(output->surface);
-    wl_callback_add_listener(output->cb, &frame_listener, output);
-
-
-    if ((output->regupd || output->new_data) && (buffer = draw_frame(output)) != NULL) {
+    if ((time == -1 || output->regupd || output->new_data) && (buffer = draw_frame(output)) != NULL) {
         // if there is new data available we draw it and mark the entire surface as dirty so that all of it would be updated
         wl_surface_attach(output->surface, buffer, 0, 0);
         if (output->regupd)
@@ -501,6 +496,10 @@ static void event_loop() {
         }
         output_t *output;
         if (fds[CONTROL_POLLFD].revents != 0) { // TODO: handle errors
+            if (fds[CONTROL_POLLFD].revents & (POLLERR | POLLHUP | POLLNVAL)) {
+                PERROR("control socket problem has occured");
+                break;
+            }
             int fd = accept(fds[CONTROL_POLLFD].fd, NULL, NULL);
             connection_t *conn = NULL;
             for (int i = 0; i < nfds; i++) {
