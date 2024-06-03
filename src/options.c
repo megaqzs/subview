@@ -13,8 +13,8 @@ void print_help(char *name) {
         "This program renders subtitles passed into it, and displays them as an overlay\n"
         "options:\n"
         "  -h          Show this help and exit\n"
-        "  -V          Show program version and exit\n", 
-        "  -v          set verbosity level of the program (default " STRINGIFY(LOG_LEVEL) ")\n", 
+        "  -V          Show program version and exit\n"
+        "  -v          set verbosity level of the program (default " STRINGIFY(LOG_LEVEL) ")\n"
         "                 DEBUG: print everything\n"
         "                 INFO: print usefull information\n"
         "                 WARN: print about problems\n"
