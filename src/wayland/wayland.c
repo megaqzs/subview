@@ -333,17 +333,24 @@ static struct wl_buffer *draw_frame(output_t *output)
         }
     }
     wl_list_for_each(region, &output->regions, link) {
-        PDEBUG("text buffer: ", region->connection->vis_buff);
         if ((output->regupd || region->updcount != region->connection->updcount)) {
             struct draw_args *args = malloc(sizeof(struct draw_args));
+            if (!args) {
+                PWARN("failed to allocate memory for region drawing thread arguments, continuing without drawing region");
+                continue;
+            }
             args->text = region->connection->vis_buff; args->buffer = data; args->stride = stride; args->options = &region->options;
             pthread_create(&region->thread, NULL, draw_text, args);
         }
 
     }
-    int i = 0;
-    wl_list_for_each(region, &output->regions, link)
-        pthread_join(region->thread, NULL);
+    wl_list_for_each(region, &output->regions, link) {
+        if ((output->regupd || region->updcount != region->connection->updcount)) {
+            int err = pthread_join(region->thread, NULL);
+            if (err)
+                PERROR("failed to join thread with error %s", strerror(err));
+        }
+    }
 
     munmap(data, size); // no need for the surface buffer on this end anymore
     wl_buffer_add_listener(buffer, &buffer_listener, NULL); // add a callback for destroying the buffer after it has been used by the compositor

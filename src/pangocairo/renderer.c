@@ -1,4 +1,5 @@
 #include <pango/pangocairo.h>
+#include <unistd.h>
 #include "renderer.h"
 #include "options.h"
 #include "utils.h"
@@ -52,25 +53,26 @@ static inline void draw_fill(cairo_t *cr, options_t *options, PangoLayout *layou
 
 // const char *text, char *buf, uint32_t stride, options_t *options
 void *draw_text(void *arg) {
+    PangoLayout *layout;
+    PangoFontDescription *desc;
+    PangoRectangle extents;
+    cairo_t *cr;
     const char *text = ((struct draw_args*) arg)->text;
     char *buf = ((struct draw_args*) arg)->buffer;
     uint32_t stride = ((struct draw_args*) arg)->stride;
     options_t *options = ((struct draw_args*) arg)->options;
-    buf += stride*options->y + options->x;
-    cairo_t *cr;
-    PangoLayout *layout;
-    PangoFontDescription *desc;
-    PangoRectangle extents;
     double x,y;
+
+    if (!buf || !options)
+        return NULL;
+    buf += stride*options->y + options->x;
 
     cr = cairo_create(cairo_image_surface_create_for_data(buf, FORMAT, options->width, options->height, stride));
     cairo_surface_destroy(cairo_get_target(cr));
     if (!text || *text == 0) {
         cairo_set_source_rgba(cr, 0, 0, 0, 0);
         cairo_fill(cr);
-        cairo_destroy(cr);
-        free(arg);
-        return NULL;
+        goto cairo_end;
     }
 
     // initialize layout
@@ -110,7 +112,9 @@ void *draw_text(void *arg) {
 
     // destroy objects
     g_object_unref(layout);
-    cairo_destroy(cr);
     pango_font_description_free(desc);
+cairo_end:
+    cairo_destroy(cr);
     free(arg);
+    return NULL;
 }
