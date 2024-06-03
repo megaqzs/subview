@@ -30,16 +30,6 @@ typedef struct {
 	struct wl_list link;
 } output_t;
 
-typedef union {
-	uint32_t r;
-	struct {
-		unsigned r:8;
-		unsigned g:8;
-		unsigned b:8;
-		unsigned a:8;
-	} v;
-} pixel;
-
 static void free_output(output_t *);
 static void layer_surface_configure_handler(void *, struct zwlr_layer_surface_v1 *,
                                             uint32_t, uint32_t, uint32_t);
@@ -81,7 +71,7 @@ static const struct wl_buffer_listener buffer_listener = {
 };
 
 pthread_mutex_t txt_buf_lock;
-char inp[40];
+char *inp;
 static struct wl_display *display;
 static struct wl_registry *registry;
 static struct wl_compositor *compositor;
@@ -248,25 +238,25 @@ static struct wl_buffer *draw_frame(output_t *output)
     //for (int y = 0; y < HEIGHT; ++y) {
     //    for (int x = 0; x < WIDTH; ++x) {
     //        if ((x + y / 10 * 10) % 20 < 10)
-    //            data[y * WIDTH + x] = 0xFF666666;
+    //            ((uint32_t*)data)[y * WIDTH + x] = 0x22660000;
     //        else
-    //            data[y * WIDTH + x] = inp;
+    //            ((uint32_t*)data)[y * WIDTH + x] = 0x22000066;
     //    }
     //}
 
-	cr_surf = cairo_image_surface_create_for_data(data, CAIRO_FORMAT_ARGB32, WIDTH, HEIGHT, WIDTH*4);
-	cr = cairo_create(cr_surf);
+	if (inp && *inp) {
+		cr_surf = cairo_image_surface_create_for_data(data, CAIRO_FORMAT_ARGB32, WIDTH, HEIGHT, WIDTH*4);
+		cr = cairo_create(cr_surf);
 
-	// initialize font
-	cairo_select_font_face(cr, FONT, FONT_SLANT, FONT_WEIGHT);
-	cairo_set_font_size(cr, FONT_SIZE);
+		// initialize font
+		cairo_select_font_face(cr, FONT, FONT_SLANT, FONT_WEIGHT);
+		cairo_set_font_size(cr, FONT_SIZE);
 
-	// get text positioning information
-	cairo_text_extents(cr, inp, &extents);
-	x = WIDTH/2-(extents.width/2 + extents.x_bearing);
-	y = HEIGHT/2-(extents.height/2 + extents.y_bearing);
+		// get text positioning information
+		cairo_text_extents(cr, inp, &extents);
+		x = WIDTH/2-(extents.width/2 + extents.x_bearing);
+		y = HEIGHT-extents.y_bearing-extents.height-OVERSCAN_Y;
 
-	if (*inp) {
 		// draw background behind text
 		cairo_set_source_rgba(cr, 0.2, 0.2, 0.2, 0.7);
 		cairo_rectangle(cr, x+extents.x_bearing-OVERSCAN_X,
@@ -274,15 +264,15 @@ static struct wl_buffer *draw_frame(output_t *output)
 				extents.width+2*OVERSCAN_X,
 				extents.height+2*OVERSCAN_Y);
 		cairo_fill (cr);
+
+		// draw text
+		cairo_move_to(cr, x, y);
+		cairo_set_source_rgba(cr, 1, 1, 1, 1);
+		cairo_show_text(cr, inp);
+
+		cairo_destroy(cr);
+		cairo_surface_destroy(cr_surf);
 	}
-
-	// draw text
-	cairo_move_to(cr, x, y);
-	cairo_set_source_rgba(cr, 1, 1, 1, 1);
-	cairo_show_text(cr, inp);
-
-	cairo_destroy(cr);
-	cairo_surface_destroy(cr_surf);
 
     munmap(data, MAP_SIZE);
     wl_buffer_add_listener(buffer, &buffer_listener, NULL);
@@ -366,7 +356,7 @@ void *start_wayland_backend(void *arg) {
 
 	// all our objects should be ready!
 	if (!compositor || !shm || !layer_shell) {
-		printf("Some required globals weren't found\n");
+		printf("ERROR: some wayland globals weren't found [%p, %p, %p]\n", compositor, shm, layer_shell);
 		ret = -1;
 		goto deallocate;
 	}
