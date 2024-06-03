@@ -9,12 +9,10 @@ uint32_t get_surf_stride(options_t *options) {
 
 static inline void draw_plain(cairo_t *cr, options_t *options, PangoLayout *layout, PangoRectangle *extents, double x, double y) {
     cairo_move_to(cr, x-pango_units_to_double(extents->x), y-pango_units_to_double(extents->y));
-    cairo_set_source_rgba(cr, options->fg.r, options->fg.g, options->fg.b, options->fg.a);
     pango_cairo_show_layout(cr, layout);
 }
 
 static inline void draw_block(cairo_t *cr, options_t *options, PangoLayout *layout, PangoRectangle *extents, double x, double y) {
-    cairo_set_source_rgba(cr, options->bg.r, options->bg.g, options->bg.b, options->bg.a);
     cairo_rectangle(cr,
             x-options->overscan_x,
             y-options->overscan_y,
@@ -29,7 +27,6 @@ static inline void draw_line_block(cairo_t *cr, options_t *options, PangoLayout 
     iter = pango_layout_get_iter(layout);
     do {
         pango_layout_iter_get_line_extents(iter, NULL, &line_extents);
-        cairo_set_source_rgba(cr, options->bg.r, options->bg.g, options->bg.b, options->bg.a);
 
         cairo_rectangle(cr,
                 x-options->overscan_x + pango_units_to_double(line_extents.x),
@@ -42,7 +39,6 @@ static inline void draw_line_block(cairo_t *cr, options_t *options, PangoLayout 
 }
 
 static inline void draw_fill(cairo_t *cr, options_t *options, PangoLayout *layout, PangoRectangle *extents, double x, double y) {
-    cairo_set_source_rgba(cr, options->bg.r, options->bg.g, options->bg.b, options->bg.a);
     cairo_rectangle(cr, 0, 0, options->width, options->height);
     cairo_fill(cr);
 }
@@ -73,6 +69,7 @@ void draw_text(char *text, char *buf, uint32_t stride, options_t *options) {
     x = options->width/2 - pango_units_to_double(extents.width/2);
     y = options->height - pango_units_to_double(extents.height);
 
+    cairo_set_source_rgba(cr, options->bg.r, options->bg.g, options->bg.b, options->bg.a);
     switch (options->style) {
         case PLAIN:
             break;
@@ -86,6 +83,7 @@ void draw_text(char *text, char *buf, uint32_t stride, options_t *options) {
             draw_fill(cr, options, layout, &extents, x, y);
             break;
     }
+    cairo_set_source_rgba(cr, options->fg.r, options->fg.g, options->fg.b, options->fg.a);
     draw_plain(cr, options, layout, &extents, x, y);
 
 
