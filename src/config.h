@@ -1,9 +1,10 @@
 #include "options.h"
 
-#define PROGNAME "subview"
-#define VERSION "0.1-devel"
+char *progname = "subview";
+char *version = "0.1-devel";
 
-enum verbosity log_level = 1;
+#define LOG_LEVEL WARN
+enum verbosity log_level = LOG_LEVEL;
 
 // the default options used by the program
 options_t default_options = {

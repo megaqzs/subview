@@ -49,9 +49,11 @@ typedef struct {
 
 int parse_args(int argc, char *argv[], options_t *);
 void _logger(enum verbosity lvl, char *format, ...);
-void get_help(char *);
+void get_help(void);
 extern enum verbosity log_level;
 extern FILE *log_files[MAX_LOG_FILES];
 extern size_t log_files_length;
+extern char *progname;
+extern char *version;
 #   define OPTIONS_H
 #endif

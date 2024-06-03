@@ -20,7 +20,7 @@ void _logger(enum verbosity lvl, char *format, ...) {
     va_end(args);
 }
 
-void print_help(char *name) {
+void print_help(void) {
     printf(
         "Usage: %s [options]\n"
         "This program renders subtitles passed into it, and displays them as an overlay\n"
@@ -34,10 +34,11 @@ void print_help(char *name) {
         "                 2, INFO: print usefull information\n"
         "                 1, WARN: print about problems\n"
         "                 0, ERROR: only print when the program can't continue\n",
-        name);
+        progname);
 }
 
 int parse_args(int argc, char *argv[], options_t *options) {
+    progname = argc ? argv[0] : progname; // use first argument as program name if available
     log_files[0] = stderr;
     int parsing = 1;
     memcpy(options, &default_options, sizeof(*options));
@@ -45,10 +46,10 @@ int parse_args(int argc, char *argv[], options_t *options) {
         switch (getopt(argc, argv, "hpdVv:")) {
             case '?':
             case 'h':
-                print_help(argc ? argv[0] : PROGNAME);
+                print_help();
                 return -1;
             case 'V':
-                printf("%s version " VERSION "\n", argc ? argv[0] : PROGNAME);
+                printf("%s version %s\n", progname, version);
                 return -2;
             case 'p':
                 options->print_path = true;
@@ -70,7 +71,7 @@ int parse_args(int argc, char *argv[], options_t *options) {
                 else if (!strcasecmp(optarg, "ERROR"))
                     log_level = ERROR;
                 else {
-                    print_help(argc ? argv[0] : PROGNAME);
+                    print_help();
                     return -3;
                 }
                 break;
