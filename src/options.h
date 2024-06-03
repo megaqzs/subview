@@ -10,9 +10,8 @@ enum text_style {
     FILL // fills the whole buffer with background, for debuging
 };
 
-enum log_level {
+enum verbosity {
     DEBUG,
-    VERBOSE,
     INFO,
     WARN,
     ERROR
@@ -26,7 +25,6 @@ struct color {
 };
 
 typedef struct {
-    enum log_level level;
     enum text_style style;
     enum zwlr_layer_surface_v1_anchor anchor;
     struct color bg;
@@ -47,5 +45,6 @@ typedef struct {
 
 int parse_args(int argc, char *argv[], options_t *);
 void get_help(char *);
+extern enum verbosity log_level;
 #   define OPTIONS_H
 #endif

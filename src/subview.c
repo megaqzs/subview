@@ -7,6 +7,7 @@
 
 #include "wayland/wayland.h"
 #include "options.h"
+#include "utils.h"
 
 int main(int argc, char *argv[]) {
     char *line = NULL;
@@ -20,6 +21,7 @@ int main(int argc, char *argv[]) {
                 if (ilen > 0 && line[ilen-1] == '\r')
                     line[--ilen] = '\0';
             }
+            PDEBUG("line length is %ld", ilen);
             if (!ilen)
                 break;
 
