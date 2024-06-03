@@ -1,4 +1,6 @@
 #!/bin/bash
+
+cp -n config.h build/config.h
 set -e
 
 bash src/wayland/xdg-shell.cgen | gcc -c -xc - -o build/xdg-shell.o
