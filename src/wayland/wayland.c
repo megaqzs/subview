@@ -24,6 +24,7 @@ typedef struct {
     struct wl_output *wl_output;
     struct zwlr_layer_surface_v1 *wlr_surf;
     struct wl_surface *surface;
+    struct wl_callback *cb;
     int32_t scale;
     uint32_t wl_name;
     _Atomic bool new_data;
@@ -75,7 +76,7 @@ static const struct wl_buffer_listener buffer_listener = {
 
 pthread_mutex_t txt_buf_lock;
 char *inp;
-_Atomic bool closed ;
+_Atomic bool closed;
 static struct wl_display *display;
 static struct wl_registry *registry;
 static struct wl_compositor *compositor;
@@ -96,6 +97,9 @@ static void free_output(output_t *output) {
     }
     if (output->surface) {
         wl_surface_destroy(output->surface);
+    }
+    if (output->cb) {
+        wl_callback_destroy(output->cb);
     }
 
     wl_list_remove(&output->link);
@@ -168,8 +172,8 @@ static void output_done(void *data, struct wl_output *wl_output)
         zwlr_layer_surface_v1_set_margin(output->wlr_surf, options->margin_top, options->margin_right, options->margin_bottom, options->margin_left);
         zwlr_layer_surface_v1_set_keyboard_interactivity(output->wlr_surf, ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_NONE);
     
-        struct wl_callback *cb = wl_surface_frame(output->surface);
-        wl_callback_add_listener(cb, &frame_listener, output);
+        output->cb = wl_surface_frame(output->surface);
+        wl_callback_add_listener(output->cb, &frame_listener, output);
         wl_surface_commit(output->surface);
         
     }
@@ -277,10 +281,10 @@ static void buffer_release(void *data, struct wl_buffer *buffer) {
 static void frame_done(void *data, struct wl_callback *cb, uint32_t time) {
     if (cb)
         wl_callback_destroy(cb);
-
     output_t *output = data;
-    cb = wl_surface_frame(output->surface);
-    wl_callback_add_listener(cb, &frame_listener, output);
+
+    output->cb = wl_surface_frame(output->surface);
+    wl_callback_add_listener(output->cb, &frame_listener, output);
 
     /* Submit a frame for this event */
     if (output->new_data) {

@@ -34,6 +34,7 @@ int main(int argc, char *argv[]) {
         }
         stop_wayland_backend();
         free(line);
+        free(options);
         free(inp);
     }
 }
