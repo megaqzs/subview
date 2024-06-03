@@ -81,7 +81,7 @@ int main(int argc, char *argv[]) {
             puts(addr.sun_path); // print the socket path if requested, must be before deamonisation
 
         if (options->daemonise)
-            daemon(0, 1); // daemonise after socket creation if requested
+            daemon(1, 1); // daemonise after socket creation if requested
 
         listen(sock, 0); // no need for backlog since it is a single client program
         if (!start_wayland_backend(options)) {
@@ -107,6 +107,7 @@ int main(int argc, char *argv[]) {
                     update_output();
                     pthread_mutex_unlock(&txt_buf_lock);
                 }
+                fclose(conn); // close socket since the connection is finished
             }
         }
     }
@@ -116,6 +117,10 @@ end:
     free(line);
     free(options);
     free(inp);
+    for (int i = 0; i < MAX_LOG_FILES; i++) {
+        fclose(log_files[i]);
+        log_files[i] = NULL;
+    }
     exit_hndlr(-1); // no signal number
     exit(exit_code);
 }

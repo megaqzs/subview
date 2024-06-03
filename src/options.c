@@ -28,6 +28,7 @@ void print_help(void) {
         "  -h          Show this help and exit\n"
         "  -p          print the control socket path\n"
         "  -d          daemonise the program after creating control socket\n"
+        "  -l <path>   print log messages to the file specified by path, replaces stderr if daemonising before\n"
         "  -V          Show program version and exit\n"
         "  -v          set verbosity level of the program (default " STRINGIFY(LOG_LEVEL) ")\n"
         "                 3, DEBUG: print everything\n"
@@ -43,7 +44,7 @@ int parse_args(int argc, char *argv[], options_t *options) {
     int parsing = 1;
     memcpy(options, &default_options, sizeof(*options));
     while (parsing) {
-        switch (getopt(argc, argv, "hpdVv:")) {
+        switch (getopt(argc, argv, "hpdVv:l:")) {
             case '?':
             case 'h':
                 print_help();
@@ -56,6 +57,20 @@ int parse_args(int argc, char *argv[], options_t *options) {
                 break;
             case 'd':
                 options->daemonise = true;
+                break;
+            case 'l':
+                int i = 0;
+                if (options->daemonise && log_files[0] == stderr) {
+                    log_files[0] = fopen(optarg, "a");
+                    break;
+                }
+                while (log_files[i] != NULL && ++i < MAX_LOG_FILES) {
+                }
+                if (i >= MAX_LOG_FILES) {
+                    PERROR("Too many log files");
+                    return -3;
+                }
+                log_files[i] = fopen(optarg, "a");
                 break;
             case 'v':
                 char *endptr;
